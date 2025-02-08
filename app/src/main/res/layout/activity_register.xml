@@ -1,0 +1,63 @@
+<?xml version="1.0" encoding="utf-8"?>
+<RelativeLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="#000000" 
+    android:padding="16dp">
+
+    <LinearLayout
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:gravity="center_horizontal"
+    android:background="#000000"
+    android:padding="16dp"
+    xmlns:app="http://schemas.android.com/apk/res-auto" >
+    
+
+    <com.google.android.material.imageview.ShapeableImageView
+        android:id="@+id/roundedImageView"
+        android:layout_width="250dp"
+        android:layout_height="250dp"
+        android:layout_marginBottom="26dp" 
+        android:layout_marginTop="16dp" 
+        android:src="@drawable/logo"
+        app:shapeAppearanceOverlay="@style/RoundedImage" />
+
+
+    <EditText
+        android:id="@+id/emailEditText"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:textColor="#FFFFFF"  
+        android:textColorHint="#888888" 
+        android:importantForAutofill="no"
+        android:inputType="textEmailAddress"
+        android:hint="Email" />
+
+    <EditText
+        android:id="@+id/pinEditText"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:hint="PIN"
+        android:inputType="numberPassword"
+        android:textColor="#FFFFFF"  
+        android:textColorHint="#888888" 
+        android:importantForAutofill="no"
+        android:layout_marginTop="16dp" />
+
+    <Button
+        android:id="@+id/registerButton"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="Start"
+        android:textColor="@android:color/white"
+        android:backgroundTint="@color/colorPrimary"
+        android:layout_marginTop="32dp" />
+
+</LinearLayout>
+
+
+</RelativeLayout>
+

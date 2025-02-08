@@ -1,0 +1,15 @@
+# Directorios de Gradle y compilación
+.gradle/
+build/
+
+# Configuración del IDE
+.idea/
+*.iml
+
+# Archivos locales
+local.properties
+
+# Otros
+.DS_Store
+Thumbs.db
+

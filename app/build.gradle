@@ -1,0 +1,118 @@
+plugins {
+    id 'com.android.application'
+    id 'kotlin-android'
+}
+
+android {
+    namespace 'com.controlparental.jerico'
+    compileSdk  35
+    defaultConfig {
+        applicationId "com.controlparental.jerico"
+        minSdk 29
+        targetSdk 34
+        versionCode 1
+        versionName "1.0"
+        testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
+
+        // Configuración para habilitar la compatibilidad con Java 17
+        compileOptions {
+            sourceCompatibility JavaVersion.VERSION_17
+            targetCompatibility JavaVersion.VERSION_17
+        }
+
+        kotlinOptions {
+            jvmTarget = "17"  // Asegura que Kotlin use la versión correcta
+        }
+        packagingOptions {
+            // Excluye el archivo LICENSE.md duplicado
+            exclude 'META-INF/LICENSE.md'
+            exclude 'META-INF/LICENSE-notice.md'
+        }
+    }
+
+    // Configuración adicional
+    buildTypes {
+        release {
+            minifyEnabled false
+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+        }
+    }
+     buildFeatures {
+        compose true
+    }
+
+    composeOptions {
+        kotlinCompilerExtensionVersion '1.5.0'
+    }
+    buildscript {
+        dependencies {
+            // Add this line
+            classpath libs.google.services // Replace with the latest version
+        }
+    }
+}
+
+dependencies {
+    implementation libs.androidx.core.ktx.v1150
+    implementation libs.androidx.appcompat
+    implementation libs.material
+    implementation libs.androidx.constraintlayout.v220
+    implementation libs.activity.ktx.v193
+    implementation libs.androidx.ui.v175
+    implementation libs.androidx.material.v175
+    implementation libs.androidx.ui.tooling.preview.v175
+    implementation libs.androidx.espresso.core.v361
+    androidTestImplementation libs.jupiter.junit.jupiter
+    debugImplementation libs.androidx.ui.tooling.v175
+    implementation libs.androidx.activity.compose.v193
+    implementation libs.androidx.ui.v175 // Asegúrate de que la versión coincida con la de tu proyecto
+    implementation libs.androidx.material3.v131
+    implementation libs.androidx.material3.window.size.v131
+    //implementation "androidx.compose.material3:material3-adaptive-navigation-suite:1.1.2"
+    implementation libs.androidx.ui.tooling.preview.v175
+    implementation libs.androidx.material3.adaptive.navigation.suite.v131
+
+
+    // Coroutines para manejar tareas en segundo plano (si las necesitas)
+    implementation libs.kotlinx.coroutines.android
+
+    // Test dependencies
+    testImplementation libs.junit
+    androidTestImplementation libs.androidx.junit.v121
+    androidTestImplementation libs.androidx.espresso.core.v361
+
+    implementation libs.play.services.location
+    implementation libs.firebase.firestore.v2511
+    //implementation "com.google.firebase:firebase-auth:22.0.0"
+    implementation libs.firebase.appcheck
+    implementation libs.firebase.firestore.ktx.v2511
+    implementation libs.google.firebase.storage // Verifica la última versión
+    //implementation 'com.google.firebase:firebase-firestore:24.0.1' // Verifica la última versión
+    implementation libs.firebase.auth.v2310 // Verifica la última versión
+
+
+
+    // Firebase Core (ya no es necesario en los últimos proyectos)
+    implementation platform(libs.firebase.bom.v3360)  // Usa la versión recomendada o actualízala
+
+    // Firebase Authentication
+    implementation libs.google.firebase.auth.ktx
+
+    // Firebase Firestore
+    //implementation 'com.google.firebase:firebase-firestore-ktx'
+
+    // Firebase AppCheck (si lo usas)
+    implementation libs.google.firebase.appcheck.ktx
+    testImplementation libs.junit.jupiter.api
+    testRuntimeOnly libs.junit.jupiter.engine
+
+    implementation libs.androidx.core.splashscreen
+    implementation libs.lottie
+    
+    implementation libs.androidx.work.runtime.ktx.v271
+    implementation libs.firebase.firestore.ktx.v2511 // O la última versión disponible
+
+}
+
+
+apply plugin: 'com.google.gms.google-services'
