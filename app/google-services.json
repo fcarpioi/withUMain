@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "261512816048",
+    "project_id": "jerico-sn",
+    "storage_bucket": "jerico-sn.appspot.com"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:261512816048:android:ab9311dd8b4c9b8df16275",
+        "android_client_info": {
+          "package_name": "com.controlparental.jerico"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCoU7fG3aZoMVKUcb1U4m_c0C2Xd2qHxyA"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
