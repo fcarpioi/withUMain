@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<set xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- Movimiento vertical suave -->
+    <translate
+        android:fromYDelta="0%p"
+        android:toYDelta="95%p"
+        android:duration="2500"
+        android:repeatCount="infinite"
+        android:repeatMode="reverse"
+        android:interpolator="@android:anim/decelerate_interpolator" />
+    
+    <!-- Efecto de fade para simular profundidad -->
+    <alpha
+        android:fromAlpha="0.3"
+        android:toAlpha="1.0"
+        android:duration="1250"
+        android:repeatCount="infinite"
+        android:repeatMode="reverse" />
+</set>

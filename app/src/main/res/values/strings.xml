@@ -1,4 +1,24 @@
 <resources>
-    <string name="app_name">Jerico</string>
+    <string name="app_name">WithU Familiar</string>
     <string name="start_service">Start Service</string>
+    <string name="email">Email</string>
+    <string name="pin">PIN</string>
+    <string name="start">Go</string>
+    <string name="slogan">I\'m with you, I won\'t leave you</string>
+    <string name="alert_message">🚨 Alert activated from device %1$s</string>
+    <string name="instruction_text">Point the camera at the QR code.</string>
+    <string name="hold_to_activate_alarm" translatable="false">Hold to Activate Alarm</string>
+    <string name="logo_description" translatable="false">WU</string>
+    <string name="password_dialog_title">Parent\'s Password</string>
+    <string name="password_dialog_message">Enter the password to continue</string>
+    <string name="password_hint">Enter password</string>
+    <string name="button_cancel">Cancel</string>
+    <string name="button_accept">Accept</string>
+    <string name="password_empty_error">Password cannot be empty</string>
+    <string name="password_cancelled">Authentication cancelled</string>
+    <string name="welcome_title">Welcome</string>
+    <string name="service_name">WithU Familiar</string>
+    <string name="service_status">Running</string>
+    <string name="service_channel_name">WithU Familiar</string>
+
 </resources>

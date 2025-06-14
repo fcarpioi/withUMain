@@ -3,8 +3,30 @@
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:background="@drawable/fondomain"
+    android:gravity="center_horizontal"
     android:orientation="vertical"
-    android:theme="@style/Theme.AppCompat.NoActionBar"
-    android:padding="0dp">
-    <!--android:background="#000000">  Color de fondo negro -->
+    android:padding="0dp"
+    android:theme="@style/Theme.AppCompat.NoActionBar">
+
+    <!-- Logo de la app -->
+    <ImageView
+        android:id="@+id/roundedImageView"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="32dp"
+        android:clickable="true"
+        android:focusable="true"
+
+        android:onClick="onLogoClicked"
+        android:src="@drawable/logo" />
+
+    <!-- Botón de activación manual, justo debajo del logo con poco margen superior -->
+    <Button
+        android:id="@+id/btnManualActivation"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="16dp"
+        android:text="Hold to Activate Alarm" />
+
+    <!-- Si hay otros elementos, se agregarían aquí -->
 </LinearLayout>

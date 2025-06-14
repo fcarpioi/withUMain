@@ -10,6 +10,7 @@
     <color name="colorPrimary">#ec7727</color> 
     <color name="colorPrimaryDark">#c04b1f</color> 
     <color name="colorAccent">#ff4081</color> 
+    <color name="backgroundColor">#12283D</color>
     
     <color name="background">#121212</color>
     <color name="buttonBackground">#BB86FC</color>
@@ -17,6 +18,17 @@
     <color name="colorHighlight">#FFD700</color> <!-- Un color dorado, por ejemplo -->
     <color name="splash_background_color">#000000</color> <!-- Tu color deseado -->
 
-
+    <!-- Nuevos colores para diseño moderno -->
+    <color name="modernBackground">#F8F9FA</color> <!-- Fondo claro y limpio -->
+    <color name="modernBackgroundSecondary">#FFFFFF</color> <!-- Blanco puro -->
+    <color name="modernOrange">#ec7727</color> <!-- Naranja principal del logo -->
+    <color name="modernOrangeLight">#FF9A56</color> <!-- Naranja claro -->
+    <color name="modernOrangeDark">#c04b1f</color> <!-- Naranja oscuro -->
+    <color name="modernGray">#6C757D</color> <!-- Gris moderno -->
+    <color name="modernGrayLight">#E9ECEF</color> <!-- Gris muy claro -->
+    <color name="modernTextPrimary">#212529</color> <!-- Texto principal -->
+    <color name="modernTextSecondary">#6C757D</color> <!-- Texto secundario -->
+    <color name="modernShadow">#1A000000</color> <!-- Sombra sutil -->
+    <color name="modernAccent">#FF6B35</color> <!-- Color de acento -->
 
 </resources>
