@@ -1,6 +1,7 @@
 package com.controlparental.jerico
 
 import android.Manifest
+import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Bundle
@@ -86,8 +87,8 @@ class MainActivity : AppCompatActivity() {
     // Verificando si los permisos han sido otorgados
     private fun arePermissionsGranted(): Boolean {
         return ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED &&
-            ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED &&
-            ContextCompat.checkSelfPermission(this, Manifest.permission.FOREGROUND_SERVICE) == PackageManager.PERMISSION_GRANTED &&
+                ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED &&
+                ContextCompat.checkSelfPermission(this, Manifest.permission.FOREGROUND_SERVICE) == PackageManager.PERMISSION_GRANTED &&
                 ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_BACKGROUND_LOCATION) == PackageManager.PERMISSION_GRANTED &&
                 ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED
     }
@@ -104,7 +105,7 @@ class MainActivity : AppCompatActivity() {
 
     // Método para iniciar el Worker
     private fun startWorker() {
-         Log.d("MainActivity", "Worker started")
+        Log.d("MainActivity", "Worker started")
         val workRequest = PeriodicWorkRequestBuilder<BackgroundServiceWorker>(5, TimeUnit.MINUTES)
             .build()
 

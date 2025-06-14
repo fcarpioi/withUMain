@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<selector xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- Estado presionado -->
+    <item android:state_pressed="true">
+        <shape android:shape="rectangle">
+            <solid android:color="@color/modernOrangeDark" />
+            <corners android:radius="12dp" />
+        </shape>
+    </item>
+    
+    <!-- Estado normal -->
+    <item>
+        <shape android:shape="rectangle">
+            <gradient
+                android:startColor="@color/modernOrange"
+                android:endColor="@color/modernOrangeLight"
+                android:angle="45"
+                android:type="linear" />
+            <corners android:radius="12dp" />
+        </shape>
+    </item>
+</selector>

@@ -27,3 +27,7 @@
 # Evitar advertencias relacionadas con las bibliotecas de Google Play Services y Firebase
 -dontwarn com.google.android.gms.**
 -dontwarn com.google.firebase.**
+
+-keep class android.hardware.camera2.** { *; }
+-keep class android.hardware.camera.** { *; }
+-keep class android.media.ImageReader { *; }

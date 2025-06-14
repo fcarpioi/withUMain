@@ -8,6 +8,9 @@ import androidx.core.view.WindowInsetsControllerCompat
 import kotlinx.coroutines.MainScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import android.animation.ObjectAnimator
+import android.view.animation.LinearInterpolator
+import android.widget.ImageView
 
 class SplashActivity : AppCompatActivity() {
     private val mainScope = MainScope()
@@ -15,6 +18,13 @@ class SplashActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_splash)
+        val logoImageView = findViewById<ImageView>(R.id.logo)
+        val swing = ObjectAnimator.ofFloat(logoImageView, "rotation", -5f, 5f)
+        swing.duration = 1500
+        swing.repeatCount = ObjectAnimator.INFINITE
+        swing.repeatMode = ObjectAnimator.REVERSE
+        swing.interpolator = LinearInterpolator()
+        swing.start()
         // Esconder la Action Bar
         supportActionBar?.hide()
 

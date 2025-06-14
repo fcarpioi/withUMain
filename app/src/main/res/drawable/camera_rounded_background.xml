@@ -1,0 +1,9 @@
+<!-- res/drawable/camera_rounded_background.xml -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android"
+    android:shape="rectangle">
+    <solid android:color="#00000000" /> <!-- transparente o color deseado -->
+    <corners android:radius="20dp" />   <!-- ajusta el redondeo -->
+    <stroke
+        android:width="5dp"
+        android:color="#80FFFFFF" />     <!-- borde opcional -->
+</shape>

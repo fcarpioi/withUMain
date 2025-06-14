@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="utf-8"?>
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- Línea principal con gradiente -->
+    <item>
+        <shape android:shape="rectangle">
+            <gradient
+                android:startColor="@android:color/transparent"
+                android:centerColor="#FFFF6B35"
+                android:endColor="@android:color/transparent"
+                android:type="linear"
+                android:angle="0" />
+            <corners android:radius="1dp" />
+        </shape>
+    </item>
+    
+    <!-- Efecto de brillo superior -->
+    <item android:bottom="1dp">
+        <shape android:shape="rectangle">
+            <gradient
+                android:startColor="@android:color/transparent"
+                android:centerColor="#80FFFFFF"
+                android:endColor="@android:color/transparent"
+                android:type="linear"
+                android:angle="0" />
+            <corners android:radius="1dp" />
+        </shape>
+    </item>
+</layer-list>

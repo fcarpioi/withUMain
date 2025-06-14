@@ -6,17 +6,15 @@
     android:layout_height="match_parent"
     android:gravity="center"
     android:orientation="vertical"
-    android:background="@color/splash_background_color"
+    android:background="@color/backgroundColor"
     tools:ignore="ExtraText">
 
-    <!-- Lottie Animation View -->
-    <com.airbnb.lottie.LottieAnimationView
-        android:id="@+id/lottieAnimation"
+    <!-- Image View for Logo -->
+    <ImageView
+        android:id="@+id/logo"
         android:layout_width="250dp"
         android:layout_height="250dp"
-        app:lottie_rawRes="@raw/jerico"
-        app:lottie_autoPlay="true"
-        app:lottie_loop="false"/>
+        android:src="@drawable/logo"
+        android:contentDescription="@string/app_name"/>
 
 </LinearLayout>
-
