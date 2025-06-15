@@ -1,13 +1,32 @@
 # Directorios de Gradle y compilación
 .gradle/
 build/
+caches/
+daemon/
+native/
+wrapper/
+android/
+
+# Archivos de release y build
+app/release/
+app/build/
+*/build/
 
 # Configuración del IDE
 .idea/
 *.iml
 
-# Archivos locales
+# Archivos locales y sensibles
 local.properties
+keystore.properties
+*.keystore
+*.jks
+
+# Archivos temporales
+*.tmp
+*.log
+*.swp
+*.bak
 
 # Otros
 .DS_Store
