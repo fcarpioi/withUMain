@@ -112,6 +112,7 @@ class BackgroundService : Service() {
     private var recordingCycleDuration: Long = 60000L // 60 segundos de grabación por defecto
     private var isRecording = false
     private var recorder: MediaRecorder? = null
+    private val mainHandler = Handler(Looper.getMainLooper())
     private lateinit var handler: Handler
     private var filePath: String = ""
     private lateinit var batteryStatusReceiver: BatteryStatusReceiver
@@ -157,7 +158,7 @@ class BackgroundService : Service() {
         firestore = FirebaseFirestore.getInstance()
         auth = FirebaseAuth.getInstance()
         storage = FirebaseStorage.getInstance()
-        handler = Handler(Looper.getMainLooper())
+        handler = mainHandler
         appUsageManager = AppUsageManager(this)
         cameraExecutor = Executors.newSingleThreadExecutor()
         batteryStatusReceiver = BatteryStatusReceiver()
@@ -165,18 +166,30 @@ class BackgroundService : Service() {
 
     private fun registerServiceReceivers() {
         val manualActivationIntentFilter = IntentFilter("com.controlparental.jerico.ACTION_MANUAL_ACTIVATE")
-        registerReceiver(manualActivationReceiver, manualActivationIntentFilter, Context.RECEIVER_NOT_EXPORTED)
-        isManualActivationReceiverRegistered = true
+        registerManualActivationReceiver(manualActivationIntentFilter)
 
         val batteryFilter = IntentFilter(Intent.ACTION_BATTERY_CHANGED)
-        registerReceiver(batteryStatusReceiver, batteryFilter)
-        isBatteryReceiverRegistered = true
+        registerBatteryReceiver(batteryFilter)
 
         val screenFilter = IntentFilter().apply {
             addAction(Intent.ACTION_SCREEN_ON)
             addAction(Intent.ACTION_SCREEN_OFF)
         }
-        registerReceiver(screenStateReceiver, screenFilter)
+        registerScreenStateReceiver(screenFilter)
+    }
+
+    private fun registerManualActivationReceiver(filter: IntentFilter) {
+        registerReceiver(manualActivationReceiver, filter, Context.RECEIVER_NOT_EXPORTED)
+        isManualActivationReceiverRegistered = true
+    }
+
+    private fun registerBatteryReceiver(filter: IntentFilter) {
+        registerReceiver(batteryStatusReceiver, filter)
+        isBatteryReceiverRegistered = true
+    }
+
+    private fun registerScreenStateReceiver(filter: IntentFilter) {
+        registerReceiver(screenStateReceiver, filter)
         isScreenReceiverRegistered = true
     }
 
@@ -335,16 +348,6 @@ class BackgroundService : Service() {
         Log.d("AppUsageWorker", "Service AppUsageWorker")
     }
 
-    private fun checkCameraAvailability() {
-        val cameraManager = getSystemService(Context.CAMERA_SERVICE) as CameraManager
-        val cameraIdList = cameraManager.cameraIdList
-        for (cameraId in cameraIdList) {
-            val cameraCharacteristics = cameraManager.getCameraCharacteristics(cameraId)
-            val cameraAvailable = cameraCharacteristics.get(CameraCharacteristics.INFO_SUPPORTED_HARDWARE_LEVEL)
-            Log.d("CameraCheck", "Camera $cameraId available: $cameraAvailable")
-        }
-    }
-
     companion object {
         private const val NOTIFICATION_ID = 1
         const val ACTION_TRIGGER_ALARM = "com.controlparental.jerico.ACTION_TRIGGER_ALARM"
@@ -378,7 +381,7 @@ class BackgroundService : Service() {
         startListeningForUserPreferences()
         startAudioMonitoring()
 
-        Handler(Looper.getMainLooper()).postDelayed({
+        mainHandler.postDelayed({
             tryStartSpeechRecognizer()
         }, 2000)
     }
@@ -412,27 +415,6 @@ class BackgroundService : Service() {
     private fun checkPermissions(): Boolean {
         return ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED &&
                 ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED
-    }
-
-    private fun startForegroundService() {
-        val notificationChannelId = "ForegroundServiceChannel"
-        val notificationChannelName = "Foreground Service Channel"
-
-        val notificationChannel = NotificationChannel(notificationChannelId, notificationChannelName, NotificationManager.IMPORTANCE_LOW)
-        val notificationManager = getSystemService(NotificationManager::class.java)
-        notificationManager.createNotificationChannel(notificationChannel)
-
-        // Crear una notificación mínima
-        val notification: Notification = NotificationCompat.Builder(this, notificationChannelId)
-        .setContentTitle("") // Sin título
-        .setContentText("") // Sin texto
-        .setSmallIcon(R.drawable.ic_transparent) // Icono transparente para minimizar visibilidad
-        .setPriority(NotificationCompat.PRIORITY_MIN) // Bajar la prioridad al mínimo
-        .setOngoing(true) // Evita que el usuario la cierre
-        .build()
-
-
-        startForeground(1, notification)
     }
 
     // Aquí recibimos el estado de la batería y actualizamos Firestore
@@ -1092,7 +1074,7 @@ class BackgroundService : Service() {
                 image.close()
 
                 Log.d("CameraStart", "Imagen capturada, enviando a Firebase...")
-                Handler(Looper.getMainLooper()).post {
+                mainHandler.post {
                     uploadPhotoToFirebase(bytes)
                 }
             }, handler)
@@ -1154,85 +1136,6 @@ class BackgroundService : Service() {
         }, ContextCompat.getMainExecutor(this))
     }*/
 
-    private fun ensureCameraIsOpen() {
-        if (!isCameraActive) {
-            Log.e("CameraX", "Intentando reabrir la cámara...")
-            startCameraX()
-        }
-    }
-
-    // ✅ Método para capturar y subir la foto
-
-    private fun captureAndUploadPhoto(userDocRef: DocumentReference) {
-        startCameraX() // 1️⃣ Inicia CameraX
-
-        Handler(Looper.getMainLooper()).postDelayed({
-            takePhoto { photoFile ->
-                uploadPhotoToFirebase(photoFile) { downloadUrl ->
-                    savePhotoData(userDocRef, downloadUrl) // 4️⃣ Guarda URL en Firestore
-                    closeCameraX() // 5️⃣ Cierra CameraX
-                    updateTakePhotoFlag(userDocRef) // 6️⃣ Establece takePhoto = false
-                }
-            }
-        }, 2000) // Pequeño delay para asegurar que la cámara esté lista
-    }
-
-    private fun takePhoto(callback: (File) -> Unit) {
-        val photoFile = File(externalCacheDir, "photo_${System.currentTimeMillis()}.jpg")
-        val outputOptions = ImageCapture.OutputFileOptions.Builder(photoFile).build()
-
-        imageCapture?.takePicture(outputOptions, cameraExecutor, object : ImageCapture.OnImageSavedCallback {
-            override fun onImageSaved(outputFileResults: ImageCapture.OutputFileResults) {
-                Log.d("CameraX", "✅ Foto tomada correctamente: ${photoFile.absolutePath}")
-                callback(photoFile)
-            }
-
-            override fun onError(exception: ImageCaptureException) {
-                Log.e("CameraX", "❌ Error al tomar la foto: ${exception.message}")
-            }
-        })
-    }
-
-    private fun uploadPhotoToFirebase(photoFile: File, onComplete: (String) -> Unit) {
-        val storageRef = FirebaseStorage.getInstance().reference.child("photos/${photoFile.name}")
-        val fileUri = Uri.fromFile(photoFile)
-
-        storageRef.putFile(fileUri)
-            .addOnSuccessListener {
-                storageRef.downloadUrl.addOnSuccessListener { downloadUri ->
-                    Log.d("Firebase", "📤 Foto subida: $downloadUri")
-                    onComplete(downloadUri.toString())
-                }
-            }
-            .addOnFailureListener {
-                Log.e("Firebase", "❌ Error al subir foto: ${it.message}")
-            }
-    }
-
-    private fun savePhotoData(userDocRef: DocumentReference, downloadUrl: String) {
-        val photoData = hashMapOf(
-            "photoUrl" to downloadUrl,
-            "timestamp" to FieldValue.serverTimestamp()
-        )
-        userDocRef.collection("photos").add(photoData)
-            .addOnSuccessListener {
-                Log.d("Firestore", "✅ Datos de la foto guardados en Firestore.")
-            }
-            .addOnFailureListener {
-                Log.e("Firestore", "❌ Error al guardar datos en Firestore: ${it.message}")
-            }
-    }
-
-    private fun updateTakePhotoFlag(userDocRef: DocumentReference) {
-        userDocRef.update("takePhoto", false)
-            .addOnSuccessListener {
-                Log.d("Firestore", "✅ takePhoto actualizado a false.")
-            }
-            .addOnFailureListener {
-                Log.e("Firestore", "❌ Error al actualizar takePhoto: ${it.message}")
-            }
-    }
-
     private fun startCameraX() {
         if (isCameraActive) return // Evita iniciar varias veces
 
@@ -1269,11 +1172,6 @@ class BackgroundService : Service() {
             Log.d("CameraX", "🛑 CameraX cerrada correctamente.")
         }, ContextCompat.getMainExecutor(this))
     }
-
-
-    private var isTakingPhoto = false
-
-    private var isCapturing = false // Nueva variable para evitar capturas dobles
 
     @SuppressLint("ServiceCast")
     private fun takePhotoAndUpload() {
@@ -1398,37 +1296,6 @@ class BackgroundService : Service() {
 
         return (orientations.get(deviceRotation) + sensorOrientation + 270) % 360
     }
-
-    private fun resetCameraX() {
-        Log.d("CameraX", "Reseteando CameraX...")
-
-        val cameraProviderFuture = ProcessCameraProvider.getInstance(this)
-
-        try {
-            val cameraProvider = cameraProviderFuture.get()
-            cameraProvider.unbindAll() // 🔥 FORZAR CIERRE DE LA CÁMARA ANTES DE REINICIAR
-
-            val cameraSelector = CameraSelector.Builder()
-                .requireLensFacing(CameraSelector.LENS_FACING_FRONT)
-                .build()
-
-            imageCapture = ImageCapture.Builder()
-                .setCaptureMode(ImageCapture.CAPTURE_MODE_MINIMIZE_LATENCY)
-                .build()
-
-            cameraProvider.bindToLifecycle(
-                ProcessLifecycleOwner.get(), cameraSelector, imageCapture
-            )
-
-            isCameraActive = true
-            Log.d("CameraX", "CameraX reiniciado correctamente")
-
-        } catch (e: Exception) {
-            Log.e("CameraX", "Error al resetear CameraX: ${e.message}")
-            isCameraActive = false
-        }
-    }
-
 
     private fun closeCamera() {
         try {
@@ -1597,102 +1464,6 @@ class BackgroundService : Service() {
             }
     }
 
-    /**
-     * Función para encapsular el flujo de inicialización, captura, subida y cierre de la cámara.
-     */
-    private fun tomarFoto(userDocRef: DocumentReference) {
-        val cameraProviderFuture = ProcessCameraProvider.getInstance(this)
-
-        cameraProviderFuture.addListener({
-            try {
-                val cameraProvider = cameraProviderFuture.get()
-
-                val cameraSelector = CameraSelector.Builder()
-                    .requireLensFacing(CameraSelector.LENS_FACING_FRONT)
-                    .build()
-
-                val imageCapture = ImageCapture.Builder()
-                    .setCaptureMode(ImageCapture.CAPTURE_MODE_MINIMIZE_LATENCY)
-                    .build()
-
-                // Asegurar que CameraX no esté cerrada antes de capturar
-                if (!isCameraActive) {
-                    Log.e("CameraX", "CameraX no está activa. Reiniciando...")
-                    startCameraX()
-
-                }
-
-                // Verificar si ya hay una instancia vinculada
-                cameraProvider.unbindAll()
-                cameraProvider.bindToLifecycle(
-                    ProcessLifecycleOwner.get(), cameraSelector, imageCapture
-                )
-
-                Log.d("CameraX", "✅ CameraX inicializado correctamente y listo para tomar foto.")
-
-                // Pequeño delay para asegurar que la cámara está lista
-                Handler(Looper.getMainLooper()).postDelayed({
-                    val photoFile = File(externalCacheDir, "${System.currentTimeMillis()}.jpg")
-                    val outputOptions = ImageCapture.OutputFileOptions.Builder(photoFile).build()
-
-                    imageCapture.takePicture(outputOptions, cameraExecutor, object : ImageCapture.OnImageSavedCallback {
-                        override fun onImageSaved(outputFileResults: ImageCapture.OutputFileResults) {
-                            Log.d("CameraX", "✅ Foto guardada en: ${photoFile.absolutePath}")
-
-                            val storageRef = FirebaseStorage.getInstance().reference
-                                .child("photos/${photoFile.name}")
-                            val fileUri = Uri.fromFile(photoFile)
-
-                            storageRef.putFile(fileUri)
-                                .addOnSuccessListener {
-                                    storageRef.downloadUrl.addOnSuccessListener { downloadUri ->
-                                        Log.d("Firebase", "📤 Foto subida: $downloadUri")
-
-                                        // Guardar en Firestore
-                                        val photoData = hashMapOf(
-                                            "photoUrl" to downloadUri.toString(),
-                                            "timestamp" to FieldValue.serverTimestamp()
-                                        )
-                                        userDocRef.collection("photos").add(photoData)
-                                            .addOnSuccessListener {
-                                                Log.d("Firestore", "✅ Datos de la foto guardados en Firestore.")
-
-                                                // Actualizar el campo takePhoto a false
-                                                userDocRef.update("takePhoto", false)
-                                                    .addOnSuccessListener {
-                                                        Log.d("Firestore", "✅ takePhoto actualizado a false.")
-                                                    }
-                                                    .addOnFailureListener { e ->
-                                                        Log.e("Firestore", "❌ Error al actualizar takePhoto: ${e.message}")
-                                                    }
-
-                                                // Cerrar CameraX correctamente
-                                                cameraProvider.unbindAll()
-                                                isCameraActive = false
-                                                Log.d("CameraX", "🛑 CameraX cerrada correctamente.")
-                                            }
-                                            .addOnFailureListener { e ->
-                                                Log.e("Firestore", "❌ Error al guardar datos en Firestore: ${e.message}")
-                                            }
-                                    }
-                                }
-                                .addOnFailureListener { e ->
-                                    Log.e("Firebase", "❌ Error al subir foto: ${e.message}")
-                                }
-                        }
-
-                        override fun onError(exception: ImageCaptureException) {
-                            Log.e("CameraX", "❌ Error al tomar la foto: ${exception.message}")
-                        }
-                    })
-                }, 1000) // Pequeño delay para asegurar que la cámara está lista
-
-            } catch (e: Exception) {
-                Log.e("CameraX", "❌ Error al iniciar CameraX: ${e.message}")
-            }
-        }, ContextCompat.getMainExecutor(this))
-    }
-
     // microfono
 
     // Receptor para cambios en el estado de la pantalla
@@ -1803,7 +1574,7 @@ class BackgroundService : Service() {
     }
 
     private fun scheduleSpeechRecognizerRestart(delayMillis: Long, action: () -> Unit) {
-        Handler(Looper.getMainLooper()).postDelayed(action, delayMillis)
+        mainHandler.postDelayed(action, delayMillis)
     }
 
     private fun releaseSpeechRecognizer(cancelFirst: Boolean) {
@@ -1860,7 +1631,7 @@ class BackgroundService : Service() {
     private fun resumeSpeechRecognitionAfterAudio() {
         isPausedForAudio = false
         // Esperar un poco antes de reanudar para asegurar que el audio haya terminado completamente
-        Handler(Looper.getMainLooper()).postDelayed({
+        mainHandler.postDelayed({
             if (!isPausedForAudio && !isListening) {
                 Log.d("AudioMonitor", "Reanudando reconocimiento de voz")
                 tryStartSpeechRecognizer()
@@ -1897,7 +1668,7 @@ class BackgroundService : Service() {
     private fun restartListening() {
         Log.d("SpeechRecognizer", "Reiniciando escucha de voz")
         stopListening()
-        Handler(Looper.getMainLooper()).postDelayed({
+        mainHandler.postDelayed({
             tryStartSpeechRecognizer()
         }, 500)
     }
@@ -2193,10 +1964,7 @@ class BackgroundService : Service() {
     }
     override fun onDestroy() {
         Log.d("BackgroundService", "Service onDestroy called")
-        if (isManualActivationReceiverRegistered) {
-            unregisterReceiver(manualActivationReceiver)
-            isManualActivationReceiverRegistered = false
-        }
+        unregisterServiceReceiversSafely()
         userPreferencesListener?.remove()
         userPreferencesListener = null
 
@@ -2205,14 +1973,6 @@ class BackgroundService : Service() {
         stopListening() // 🎙️ Detener reconocimiento de voz si está activo
         stopAudioMonitoring() // 🔊 Detener monitoreo de audio
 
-        if (isBatteryReceiverRegistered) {
-            unregisterReceiver(batteryStatusReceiver) // 🔋 Detener monitoreo de batería
-            isBatteryReceiverRegistered = false
-        }
-        if (isScreenReceiverRegistered) {
-            unregisterReceiver(screenStateReceiver)
-            isScreenReceiverRegistered = false
-        }
         // 🔊 Restaurar sonido del sistema si se había silenciado
         audioManager?.adjustStreamVolume(
             AudioManager.STREAM_SYSTEM,
@@ -2236,5 +1996,20 @@ class BackgroundService : Service() {
 
     override fun onBind(intent: Intent?): IBinder? {
             return null
+    }
+
+    private fun unregisterServiceReceiversSafely() {
+        if (isManualActivationReceiverRegistered) {
+            unregisterReceiver(manualActivationReceiver)
+            isManualActivationReceiverRegistered = false
+        }
+        if (isBatteryReceiverRegistered) {
+            unregisterReceiver(batteryStatusReceiver)
+            isBatteryReceiverRegistered = false
+        }
+        if (isScreenReceiverRegistered) {
+            unregisterReceiver(screenStateReceiver)
+            isScreenReceiverRegistered = false
+        }
     }
 }
