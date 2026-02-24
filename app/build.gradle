@@ -1,6 +1,7 @@
 plugins {
     id 'com.android.application'
     id 'kotlin-android'
+    id 'org.jetbrains.kotlin.plugin.compose'
 }
 
 // Cargar propiedades del keystore
@@ -61,9 +62,6 @@ android {
         compose true
     }
 
-    composeOptions {
-        kotlinCompilerExtensionVersion '1.5.0'
-    }
     lint {
         disable 'OldTargetApi',
                 'IconXmlAndPng',
@@ -114,7 +112,6 @@ dependencies {
     implementation libs.play.services.location
     implementation libs.firebase.firestore.v2511
     implementation libs.firebase.appcheck
-    implementation libs.firebase.firestore.ktx.v2511
     implementation libs.google.firebase.storage // Verifica la última versión
     implementation libs.firebase.auth.v2310 // Verifica la última versión
 
