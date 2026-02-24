@@ -2000,16 +2000,24 @@ class BackgroundService : Service() {
 
     private fun unregisterServiceReceiversSafely() {
         if (isManualActivationReceiverRegistered) {
-            unregisterReceiver(manualActivationReceiver)
+            safeUnregisterReceiver(manualActivationReceiver, "manualActivationReceiver")
             isManualActivationReceiverRegistered = false
         }
         if (isBatteryReceiverRegistered) {
-            unregisterReceiver(batteryStatusReceiver)
+            safeUnregisterReceiver(batteryStatusReceiver, "batteryStatusReceiver")
             isBatteryReceiverRegistered = false
         }
         if (isScreenReceiverRegistered) {
-            unregisterReceiver(screenStateReceiver)
+            safeUnregisterReceiver(screenStateReceiver, "screenStateReceiver")
             isScreenReceiverRegistered = false
+        }
+    }
+
+    private fun safeUnregisterReceiver(receiver: BroadcastReceiver, receiverName: String) {
+        try {
+            unregisterReceiver(receiver)
+        } catch (exception: IllegalArgumentException) {
+            Log.w("BackgroundService", "$receiverName was not registered or already unregistered", exception)
         }
     }
 }
