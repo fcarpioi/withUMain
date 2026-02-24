@@ -18,4 +18,12 @@
     <string name="service_name">WithU Familiar</string>
     <string name="service_status">En Ejecución</string>
     <string name="service_channel_name">WithU Familiar</string>
+    <string name="fake_shutdown_title">Actividad de apagado falso</string>
+    <string name="button_close">Cerrar</string>
+    <string name="scan_qr_title">Escanear Código QR</string>
+    <string name="scan_qr_subtitle">Posiciona el código QR dentro del marco</string>
+    <string name="searching_qr">Buscando código QR...</string>
+    <string name="scan_tips_title">💡 Consejos para un mejor escaneo:</string>
+    <string name="scan_tips_body">• Mantén el dispositivo estable\n• Asegúrate de tener buena iluminación\n• El código QR debe estar completamente visible</string>
+    <string name="debug_qr">Debug QR</string>
 </resources>

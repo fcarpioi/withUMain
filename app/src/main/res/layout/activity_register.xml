@@ -73,7 +73,7 @@
                 <TextView
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:text="Escanear Código QR"
+                    android:text="@string/scan_qr_title"
                     android:textColor="@color/white"
                     android:textSize="20sp"
                     android:textStyle="bold"
@@ -82,7 +82,7 @@
                 <TextView
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:text="Posiciona el código QR dentro del marco"
+                    android:text="@string/scan_qr_subtitle"
                     android:textColor="@color/modernGrayLight"
                     android:textSize="14sp"
                     android:layout_marginBottom="24dp"
@@ -177,7 +177,7 @@
                             <TextView
                                 android:layout_width="wrap_content"
                                 android:layout_height="wrap_content"
-                                android:text="Buscando código QR..."
+                                android:text="@string/searching_qr"
                                 android:textColor="@color/white"
                                 android:textSize="12sp" />
                         </LinearLayout>
@@ -196,7 +196,7 @@
                     <TextView
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:text="💡 Consejos para un mejor escaneo:"
+                        android:text="@string/scan_tips_title"
                         android:textColor="@color/modernOrange"
                         android:textSize="14sp"
                         android:textStyle="bold"
@@ -205,7 +205,7 @@
                     <TextView
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
-                        android:text="• Mantén el dispositivo estable\n• Asegúrate de tener buena iluminación\n• El código QR debe estar completamente visible"
+                        android:text="@string/scan_tips_body"
                         android:textColor="@color/modernGrayLight"
                         android:textSize="12sp"
                         android:gravity="center"
@@ -217,7 +217,7 @@
                     android:id="@+id/debugButton"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:text="Debug QR"
+                    android:text="@string/debug_qr"
                     android:layout_gravity="center"
                     android:layout_marginTop="16dp"
                     android:background="@drawable/modern_button_background"
