@@ -125,14 +125,8 @@ dependencies {
     // Firebase Core (ya no es necesario en los últimos proyectos)
     implementation platform(libs.firebase.bom.v3360)  // Usa la versión recomendada o actualízala
 
-    // Firebase Authentication
-    implementation libs.google.firebase.auth.ktx
-
     // Firebase Firestore
     //implementation 'com.google.firebase:firebase-firestore-ktx'
-
-    // Firebase AppCheck (si lo usas)
-    implementation libs.google.firebase.appcheck.ktx
     testImplementation libs.junit.jupiter.api
     testRuntimeOnly libs.junit.jupiter.engine
 
