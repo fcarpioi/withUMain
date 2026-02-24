@@ -1597,7 +1597,9 @@ class BackgroundService : Service() {
                 audioCheckHandler?.postDelayed(this, 1000) // Verificar cada segundo
             }
         }
-        audioCheckHandler?.post(audioCheckRunnable!!)
+        audioCheckRunnable?.let { runnable ->
+            audioCheckHandler?.post(runnable)
+        }
         Log.d("AudioMonitor", "Monitoreo de audio iniciado")
     }
 

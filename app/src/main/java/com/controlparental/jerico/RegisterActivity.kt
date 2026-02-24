@@ -365,13 +365,14 @@ class RegisterActivity : AppCompatActivity() {
     @SuppressLint("HardwareIds")
     private fun registerDeviceInFirestore() {
         val user = auth.currentUser
-        if (user != null && qrDeviceId != null) {
+        val safeQrDeviceId = qrDeviceId
+        if (user != null && safeQrDeviceId != null) {
             val userId = user.uid
             val localDeviceId = Settings.Secure.getString(contentResolver, Settings.Secure.ANDROID_ID)
             val deviceRef = firestore.collection("users")
                 .document(userId)
                 .collection("devices")
-                .document(qrDeviceId!!)
+                .document(safeQrDeviceId)
 
             deviceRef.get().addOnSuccessListener { document ->
                 if (document.exists()) {
