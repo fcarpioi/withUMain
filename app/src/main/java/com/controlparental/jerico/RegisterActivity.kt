@@ -60,13 +60,14 @@ class RegisterActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_register)
 
+        auth = FirebaseAuth.getInstance()
+        firestore = FirebaseFirestore.getInstance()
         sharedPreferences = getSharedPreferences("UserPrefs", Context.MODE_PRIVATE)
+        sharedPreferences.edit().remove("password").apply()
 
-        val savedEmail = sharedPreferences.getString("email", null)
-        val savedPassword = sharedPreferences.getString("password", null)
         val savedDeviceId = sharedPreferences.getString("idDevice", null)
 
-        if (savedEmail != null && savedPassword != null && savedDeviceId != null) {
+        if (auth.currentUser != null && savedDeviceId != null) {
             qrDeviceId = savedDeviceId
             DeviceIdHolder.deviceId = qrDeviceId
 
@@ -93,9 +94,6 @@ class RegisterActivity : AppCompatActivity() {
 
         enableFullScreenMode()
         supportActionBar?.hide()
-
-        auth = FirebaseAuth.getInstance()
-        firestore = FirebaseFirestore.getInstance()
 
         previewView = findViewById(R.id.previewView)
 
@@ -298,7 +296,6 @@ class RegisterActivity : AppCompatActivity() {
                             Log.d("QRCodeDebug", "✅ Verificación de dispositivo exitosa")
                             sharedPreferences.edit().apply {
                                 putString("email", email)
-                                putString("password", password)
                                 apply()
                             }
                             registerDeviceInFirestore()

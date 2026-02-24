@@ -91,6 +91,7 @@ import com.controlparental.jerico.usage.AppUsageManager
 import com.controlparental.jerico.workers.AppUsageWorker
 import com.google.firebase.firestore.DocumentReference
 import com.google.firebase.firestore.FieldValue
+import com.google.firebase.firestore.ListenerRegistration
 import java.util.concurrent.ExecutorService
 import android.app.usage.UsageStatsManager
 
@@ -132,6 +133,7 @@ class BackgroundService : Service() {
     private lateinit var cameraExecutor: ExecutorService
     private var imageCapture: ImageCapture? = null
     private var isCameraActive: Boolean = false
+    private var userPreferencesListener: ListenerRegistration? = null
 
 
     override fun onCreate() {
@@ -486,7 +488,8 @@ class BackgroundService : Service() {
         val deviceId = getDeviceIdAsString()
         val deviceDocRef = firestore.collection("users").document(userId).collection("devices").document(deviceId)
 
-        deviceDocRef.addSnapshotListener { snapshot, e ->
+        userPreferencesListener?.remove()
+        userPreferencesListener = deviceDocRef.addSnapshotListener { snapshot, e ->
             if (e != null) {
                 Log.e("BackgroundService", "Error listening for user data changes: ${e.message}")
                 return@addSnapshotListener
@@ -1726,6 +1729,7 @@ class BackgroundService : Service() {
 
     // Inicializa el SpeechRecognizer y solicita audio focus (usando la API moderna en API 26+)
     private fun initializeSpeechRecognizer() {
+        if (speechRecognizer != null) return
         speechRecognizer = SpeechRecognizer.createSpeechRecognizer(this)
         recognizerIntent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
             putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
@@ -1809,6 +1813,7 @@ class BackgroundService : Service() {
 
     // Monitoreo inteligente de audio para evitar conflictos
     private fun startAudioMonitoring() {
+        if (audioCheckHandler != null) return
         audioCheckHandler = Handler(Looper.getMainLooper())
         audioCheckRunnable = object : Runnable {
             override fun run() {
@@ -2163,6 +2168,8 @@ class BackgroundService : Service() {
     override fun onDestroy() {
         Log.d("BackgroundService", "Service onDestroy called")
         unregisterReceiver(manualActivationReceiver)
+        userPreferencesListener?.remove()
+        userPreferencesListener = null
 
         stopLocationUpdates() // 🚫 Detener actualizaciones de ubicación
         stopRecording() // 🎤 Detener grabación si está activa

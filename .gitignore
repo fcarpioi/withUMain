@@ -9,6 +9,7 @@ android/
 
 # Archivos de release y build
 app/release/
+app/debug/
 app/build/
 */build/
 
@@ -31,4 +32,3 @@ keystore.properties
 # Otros
 .DS_Store
 Thumbs.db
-
