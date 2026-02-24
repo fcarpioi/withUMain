@@ -1,5 +1,6 @@
 package com.controlparental.jerico
 
+import android.annotation.SuppressLint
 import android.content.Intent
 import android.os.Bundle
 import androidx.appcompat.app.AppCompatActivity
@@ -12,6 +13,7 @@ import android.animation.ObjectAnimator
 import android.view.animation.LinearInterpolator
 import android.widget.ImageView
 
+@SuppressLint("CustomSplashScreen")
 class SplashActivity : AppCompatActivity() {
     private val mainScope = MainScope()
 
