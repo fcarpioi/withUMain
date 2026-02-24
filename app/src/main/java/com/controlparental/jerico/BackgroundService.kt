@@ -224,12 +224,24 @@ class BackgroundService : Service() {
 
     private fun initializeSpeechRecognitionOnCreate() {
         initializeSpeechRecognizer()
-        val powerManager = getSystemService(Context.POWER_SERVICE) as PowerManager
-        if (!powerManager.isInteractive) {
+        if (isScreenOff()) {
             tryStartSpeechRecognizer()
         } else {
             Log.d("BackgroundService", "La pantalla está encendida, SpeechRecognizer no se inicia")
         }
+    }
+
+    private fun isScreenOff(): Boolean {
+        val powerManager = getSystemService(Context.POWER_SERVICE) as PowerManager
+        return !powerManager.isInteractive
+    }
+
+    private fun canRunSpeechRecognitionNow(): Boolean {
+        val hasAudioPermission = ContextCompat.checkSelfPermission(
+            this,
+            Manifest.permission.RECORD_AUDIO
+        ) == PackageManager.PERMISSION_GRANTED
+        return hasAudioPermission && isScreenOff() && !isPausedForAudio && !isRecording
     }
 
     /*private fun capturarPantalla(userDocRef: DocumentReference) {
@@ -1477,12 +1489,12 @@ class BackgroundService : Service() {
                 Intent.ACTION_SCREEN_OFF -> {
                     Log.d("ScreenStateReceiver", "Pantalla apagada: verificando estado de audio")
 
-                    // El monitoreo de audio se encargará de decidir cuándo iniciar
-                    if (!isPausedForAudio) {
+                    // Solo iniciar escucha si se cumplen todas las condiciones de seguridad.
+                    if (canRunSpeechRecognitionNow()) {
                         initializeSpeechRecognizer()
                         tryStartSpeechRecognizer()
                     } else {
-                        Log.d("ScreenStateReceiver", "No se inicia SpeechRecognizer porque hay audio activo")
+                        Log.d("ScreenStateReceiver", "No se inicia SpeechRecognizer: condiciones no válidas")
                     }
                 }
                 Intent.ACTION_SCREEN_ON -> {
@@ -1522,13 +1534,16 @@ class BackgroundService : Service() {
             override fun onResults(results: Bundle?) {
                 isListening = false
                 val matches = results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
+                var keywordDetected = false
                 matches?.forEach { result ->
                     Log.d("SpeechRecognizer", "Palabra detectada: $result")
-                    if (containsKeyword(result)) {
+                    if (!keywordDetected && containsKeyword(result)) {
+                        keywordDetected = true
                         triggerAlarm()
-                        restartListening() // Reiniciar el reconocedor después de la alarma
                     }
                 }
+                // Mantener escucha continua, pero siempre respetando guardas de pantalla/audio.
+                restartListening()
             }
             override fun onPartialResults(partialResults: Bundle?) {}
             override fun onEvent(eventType: Int, params: Bundle?) {}
@@ -1549,15 +1564,15 @@ class BackgroundService : Service() {
                     else -> 1000L
                 }
 
-                // Reiniciar siempre, sin importar el estado de la pantalla
+                // Reiniciar solo si el contexto sigue siendo válido para no secuestrar audio.
                 scheduleSpeechRecognizerRestart(delay) {
-                    if (!isRecording) { // Solo reiniciar si no estamos grabando
+                    if (canRunSpeechRecognitionNow()) {
                         Log.d("SpeechRecognizer", "Reiniciando reconocimiento tras error: $error")
                         releaseSpeechRecognizer(cancelFirst = true)
                         initializeSpeechRecognizer()
                         tryStartSpeechRecognizer()
                     } else {
-                        Log.d("SpeechRecognizer", "No se reinicia porque está grabando audio")
+                        Log.d("SpeechRecognizer", "No se reinicia por condiciones no válidas (pantalla/audio/grabación)")
                     }
                 }
             }
@@ -1569,11 +1584,12 @@ class BackgroundService : Service() {
 
     // Función para iniciar la escucha directamente sin audio focus
     private fun tryStartSpeechRecognizer() {
-        Log.d("SpeechRecognizer", "Iniciando reconocimiento de voz sin audio focus")
-        if (!isPausedForAudio) {
+        if (canRunSpeechRecognitionNow()) {
+            Log.d("SpeechRecognizer", "Iniciando reconocimiento de voz sin audio focus")
+            initializeSpeechRecognizer()
             startListening()
         } else {
-            Log.d("SpeechRecognizer", "No se inicia porque hay audio activo")
+            Log.d("SpeechRecognizer", "No se inicia: condiciones no válidas (pantalla/audio/grabación/permisos)")
         }
     }
 
@@ -1626,10 +1642,8 @@ class BackgroundService : Service() {
     }
 
     private fun pauseSpeechRecognitionForAudio() {
-        if (isListening) {
-            stopListening()
-            speechRecognizer?.cancel()
-        }
+        // Liberar el recognizer por completo evita que el micrófono quede tomado.
+        releaseSpeechRecognizer(cancelFirst = true)
         isPausedForAudio = true
         Log.d("AudioMonitor", "Reconocimiento de voz pausado por audio activo")
     }
@@ -1653,13 +1667,12 @@ class BackgroundService : Service() {
     }
 
     private fun startListening() {
-        // Verificar si no hay audio activo antes de iniciar
-        if (!isListening && !isPausedForAudio) {
+        if (!isListening && canRunSpeechRecognitionNow()) {
             speechRecognizer?.startListening(recognizerIntent)
             isListening = true
             Log.d("SpeechRecognizer", "Escucha de voz activada")
-        } else if (isPausedForAudio) {
-            Log.d("SpeechRecognizer", "No se puede iniciar escucha: audio activo detectado")
+        } else {
+            Log.d("SpeechRecognizer", "No se puede iniciar escucha por condiciones no válidas")
         }
     }
 
@@ -1674,6 +1687,10 @@ class BackgroundService : Service() {
     private fun restartListening() {
         Log.d("SpeechRecognizer", "Reiniciando escucha de voz")
         stopListening()
+        if (!canRunSpeechRecognitionNow()) {
+            Log.d("SpeechRecognizer", "Reinicio omitido: condiciones no válidas")
+            return
+        }
         mainHandler.postDelayed({
             tryStartSpeechRecognizer()
         }, 500)
