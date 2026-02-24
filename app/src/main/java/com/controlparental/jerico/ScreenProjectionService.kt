@@ -17,6 +17,7 @@ import android.util.DisplayMetrics
 import android.util.Log
 import android.view.WindowManager
 import androidx.annotation.RequiresApi
+import androidx.core.graphics.createBitmap
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.storage.FirebaseStorage
@@ -136,7 +137,7 @@ class ScreenProjectionService : Service() {
             val rowStride = planes[0].rowStride
             val rowPadding = rowStride - pixelStride * width
 
-            val bitmap = Bitmap.createBitmap(
+            val bitmap = createBitmap(
                 width + rowPadding / pixelStride,
                 height,
                 Bitmap.Config.ARGB_8888

@@ -62,6 +62,7 @@ import android.os.HandlerThread
 import android.util.Size
 import androidx.core.app.ActivityCompat
 import java.util.concurrent.Executors
+import androidx.core.content.edit
 import okhttp3.*
 import android.app.AppOpsManager
 import android.app.PendingIntent
@@ -308,7 +309,7 @@ class BackgroundService : Service() {
 
     private fun markUsagePermissionRequested() {
         val prefs = getSharedPreferences("AppPrefs", Context.MODE_PRIVATE)
-        prefs.edit().putBoolean("usagePermissionRequested", true).apply()
+        prefs.edit { putBoolean("usagePermissionRequested", true) }
     }
 
 

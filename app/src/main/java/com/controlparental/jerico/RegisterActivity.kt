@@ -26,6 +26,7 @@ import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.camera.view.PreviewView
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
+import androidx.core.content.edit
 import com.google.android.material.imageview.ShapeableImageView
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FirebaseFirestore
@@ -63,7 +64,7 @@ class RegisterActivity : AppCompatActivity() {
         auth = FirebaseAuth.getInstance()
         firestore = FirebaseFirestore.getInstance()
         sharedPreferences = getSharedPreferences("UserPrefs", Context.MODE_PRIVATE)
-        sharedPreferences.edit().remove("password").apply()
+        sharedPreferences.edit { remove("password") }
 
         val savedDeviceId = sharedPreferences.getString("idDevice", null)
 
@@ -241,7 +242,7 @@ class RegisterActivity : AppCompatActivity() {
             Log.d("QRCodeDebug", "📱 idDevice extraído: '$qrDeviceId'")
 
             DeviceIdHolder.deviceId = qrDeviceId
-            sharedPreferences.edit().putString("idDevice", qrDeviceId).apply()
+            sharedPreferences.edit { putString("idDevice", qrDeviceId) }
 
             promptForPassword(email)
         } catch (e: Exception) {
@@ -342,7 +343,7 @@ class RegisterActivity : AppCompatActivity() {
         deviceDocRef.get().addOnSuccessListener { document ->
             if (document.exists()) {
                 if (storedDeviceId == null || storedDeviceId == scannedDeviceId) {
-                    sharedPreferences.edit().putString("idDevice", scannedDeviceId).apply()
+                    sharedPreferences.edit { putString("idDevice", scannedDeviceId) }
                     onSuccess()
                 } else {
                     onFailure("Dispositivo no permitido para esta cuenta")
@@ -350,7 +351,7 @@ class RegisterActivity : AppCompatActivity() {
             } else {
                 deviceDocRef.set(mapOf("createdAt" to System.currentTimeMillis()))
                     .addOnSuccessListener {
-                        sharedPreferences.edit().putString("idDevice", scannedDeviceId).apply()
+                        sharedPreferences.edit { putString("idDevice", scannedDeviceId) }
                         onSuccess()
                     }
                     .addOnFailureListener { e ->
@@ -488,7 +489,7 @@ class RegisterActivity : AppCompatActivity() {
 
     private fun logout() {
         auth.signOut()
-        sharedPreferences.edit().clear().apply()
+        sharedPreferences.edit { clear() }
         startActivity(Intent(this, RegisterActivity::class.java))
         finish()
     }
