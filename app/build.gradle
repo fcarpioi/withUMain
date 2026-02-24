@@ -113,11 +113,9 @@ dependencies {
 
     implementation libs.play.services.location
     implementation libs.firebase.firestore.v2511
-    //implementation "com.google.firebase:firebase-auth:22.0.0"
     implementation libs.firebase.appcheck
     implementation libs.firebase.firestore.ktx.v2511
     implementation libs.google.firebase.storage // Verifica la última versión
-    //implementation 'com.google.firebase:firebase-firestore:24.0.1' // Verifica la última versión
     implementation libs.firebase.auth.v2310 // Verifica la última versión
 
 
@@ -125,8 +123,6 @@ dependencies {
     // Firebase Core (ya no es necesario en los últimos proyectos)
     implementation platform(libs.firebase.bom.v3360)  // Usa la versión recomendada o actualízala
 
-    // Firebase Firestore
-    //implementation 'com.google.firebase:firebase-firestore-ktx'
     testImplementation libs.junit.jupiter.api
     testRuntimeOnly libs.junit.jupiter.engine
 

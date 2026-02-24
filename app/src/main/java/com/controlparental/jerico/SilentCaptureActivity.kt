@@ -79,11 +79,7 @@ class SilentCaptureActivity : Activity() {
             return
         }
         val context = createDisplayContext(currentDisplay)
-        val displayForCapture = context.display ?: run {
-            Log.e("SilentCaptureDebug", "❌ No se pudo obtener display de contexto para captura")
-            finish()
-            return
-        }
+        val displayForCapture = context.display
         metrics.widthPixels = displayForCapture.mode.physicalWidth
         metrics.heightPixels = displayForCapture.mode.physicalHeight
         metrics.densityDpi = context.resources.displayMetrics.densityDpi

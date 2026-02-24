@@ -63,8 +63,6 @@ firebase-auth-v2310 = { module = "com.google.firebase:firebase-auth", version.re
 firebase-bom-v3360 = { module = "com.google.firebase:firebase-bom", version.ref = "firebaseBomVersion" }
 firebase-firestore-ktx-v2511 = { module = "com.google.firebase:firebase-firestore-ktx", version.ref = "firebaseFirestoreKtxVersion" }
 firebase-firestore-v2511 = { module = "com.google.firebase:firebase-firestore", version.ref = "firebaseFirestoreVersion" }
-google-firebase-appcheck-ktx = { module = "com.google.firebase:firebase-appcheck-ktx" }
-google-firebase-auth-ktx = { module = "com.google.firebase:firebase-auth-ktx" }
 google-firebase-storage = { module = "com.google.firebase:firebase-storage" }
 google-mlkit-barcode-scanning = { module = "com.google.mlkit:barcode-scanning", version.ref = "mlkitBarcode" }
 google-services = { module = "com.google.gms:google-services", version.ref = "googleServices" }
