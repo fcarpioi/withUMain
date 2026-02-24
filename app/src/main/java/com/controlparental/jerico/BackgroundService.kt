@@ -90,10 +90,12 @@ import androidx.lifecycle.ProcessLifecycleOwner
 import com.controlparental.jerico.usage.AppUsageManager
 import com.controlparental.jerico.workers.AppUsageWorker
 import com.google.firebase.firestore.DocumentReference
+import com.google.firebase.firestore.DocumentSnapshot
 import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.ListenerRegistration
 import java.util.concurrent.ExecutorService
 import android.app.usage.UsageStatsManager
+import android.app.usage.UsageStats
 
 import android.provider.Settings
 import android.content.Intent.FLAG_ACTIVITY_NEW_TASK
@@ -134,34 +136,51 @@ class BackgroundService : Service() {
     private var imageCapture: ImageCapture? = null
     private var isCameraActive: Boolean = false
     private var userPreferencesListener: ListenerRegistration? = null
+    private var isManualActivationReceiverRegistered = false
+    private var isBatteryReceiverRegistered = false
+    private var isScreenReceiverRegistered = false
 
 
     override fun onCreate() {
         super.onCreate()
         Log.d("BackgroundService", "Service onCreate called")
+        initializeServiceDependencies()
+        registerServiceReceivers()
+        startListeningForUserPreferences()
+        startBackgroundThread()
+        requestUsageStatsPermissionIfNeeded()
+        initializeSpeechRecognitionOnCreate()
+    }
 
-        // Registrar el receptor para la activación manual
-        val manualActivationIntentFilter = IntentFilter("com.controlparental.jerico.ACTION_MANUAL_ACTIVATE")
-        registerReceiver(manualActivationReceiver, manualActivationIntentFilter, Context.RECEIVER_NOT_EXPORTED)
-
+    private fun initializeServiceDependencies() {
         fusedLocationClient = LocationServices.getFusedLocationProviderClient(this)
         firestore = FirebaseFirestore.getInstance()
         auth = FirebaseAuth.getInstance()
         storage = FirebaseStorage.getInstance()
         handler = Handler(Looper.getMainLooper())
         appUsageManager = AppUsageManager(this)
-
-        // Iniciar otros servicios
         cameraExecutor = Executors.newSingleThreadExecutor()
-
-        startListeningForUserPreferences() // Escuchar cambios en Firebase
-        startBackgroundThread()
-
-        // Registrar el receptor de batería
         batteryStatusReceiver = BatteryStatusReceiver()
+    }
+
+    private fun registerServiceReceivers() {
+        val manualActivationIntentFilter = IntentFilter("com.controlparental.jerico.ACTION_MANUAL_ACTIVATE")
+        registerReceiver(manualActivationReceiver, manualActivationIntentFilter, Context.RECEIVER_NOT_EXPORTED)
+        isManualActivationReceiverRegistered = true
+
         val batteryFilter = IntentFilter(Intent.ACTION_BATTERY_CHANGED)
         registerReceiver(batteryStatusReceiver, batteryFilter)
+        isBatteryReceiverRegistered = true
 
+        val screenFilter = IntentFilter().apply {
+            addAction(Intent.ACTION_SCREEN_ON)
+            addAction(Intent.ACTION_SCREEN_OFF)
+        }
+        registerReceiver(screenStateReceiver, screenFilter)
+        isScreenReceiverRegistered = true
+    }
+
+    private fun requestUsageStatsPermissionIfNeeded() {
         if (!hasUsageStatsPermission(this)) {
             triggerUsageStatsManager() // 👈 nuevo: forzar uso antes de pedir permiso
             if (shouldRequestUsagePermission()) {
@@ -172,21 +191,10 @@ class BackgroundService : Service() {
                 Log.w("Permissions", "🟠 Permiso USAGE_STATS aún no otorgado, pero ya fue solicitado anteriormente.")
             }
         }
+    }
 
-        // Registrar el receptor de cambios de estado de la pantalla
-        val screenFilter = IntentFilter().apply {
-            addAction(Intent.ACTION_SCREEN_ON)
-            addAction(Intent.ACTION_SCREEN_OFF)
-        }
-        registerReceiver(screenStateReceiver, screenFilter)
-
-        //cameraExecutor = Executors.newSingleThreadExecutor()
-
-
-        // Inicializa el SpeechRecognizer
+    private fun initializeSpeechRecognitionOnCreate() {
         initializeSpeechRecognizer()
-
-        // Solo inicia el SpeechRecognizer si la pantalla está apagada
         val powerManager = getSystemService(Context.POWER_SERVICE) as PowerManager
         if (!powerManager.isInteractive) {
             tryStartSpeechRecognizer()
@@ -345,7 +353,6 @@ class BackgroundService : Service() {
         Log.d("BackgroundService", "Service onStartCommand called")
         val notification = createNotification()
         startForeground(NOTIFICATION_ID, notification)
-        // Leer el deviceId escaneado de SharedPreferences
 
         // 🔍 Verificación de permisos
         if (ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED ||
@@ -354,25 +361,26 @@ class BackgroundService : Service() {
             Toast.makeText(this, "Required permissions not granted", Toast.LENGTH_LONG).show()
             return START_NOT_STICKY
         }
-        Log.d("BackgroundService", "Service onStartCommand called")
+
         // Verifica si se envió la acción para activar la alarma
         if (intent?.action == ACTION_TRIGGER_ALARM) {
             triggerAlarm()
         }
-        // ✅ Iniciar en primer plano con una notificación persistente
 
-        audioManager = getSystemService(Context.AUDIO_SERVICE) as AudioManager
-
-        initializeSpeechRecognizer() // 🎙️ Inicializar reconocimiento de voz
-        startListeningForUserPreferences() // 🔄 Escuchar cambios en Firestore para manejar grabación/escucha
-        startAudioMonitoring() // 🔊 Iniciar monitoreo de audio
-
-        // 🎙️ Iniciar reconocimiento de voz automáticamente (sin audio focus)
-        Handler(Looper.getMainLooper()).postDelayed({
-            tryStartSpeechRecognizer()
-        }, 2000) // Esperar 2 segundos para que se inicialice todo
+        startServiceRuntimeMonitoring()
 
         return START_STICKY
+    }
+
+    private fun startServiceRuntimeMonitoring() {
+        audioManager = getSystemService(Context.AUDIO_SERVICE) as AudioManager
+        initializeSpeechRecognizer()
+        startListeningForUserPreferences()
+        startAudioMonitoring()
+
+        Handler(Looper.getMainLooper()).postDelayed({
+            tryStartSpeechRecognizer()
+        }, 2000)
     }
 
     private fun createNotification(): Notification {
@@ -429,28 +437,22 @@ class BackgroundService : Service() {
 
     // Aquí recibimos el estado de la batería y actualizamos Firestore
     inner class BatteryStatusReceiver : BroadcastReceiver() {
-        private val firestore = FirebaseFirestore.getInstance()
-
         override fun onReceive(context: Context, intent: Intent) {
             // Obtener el porcentaje de batería
-            val level = intent.getIntExtra(BatteryManager.EXTRA_LEVEL, -1) ?: -1
-            val scale = intent.getIntExtra(BatteryManager.EXTRA_SCALE, -1) ?: -1
+            val level = intent.getIntExtra(BatteryManager.EXTRA_LEVEL, -1)
+            val scale = intent.getIntExtra(BatteryManager.EXTRA_SCALE, -1)
 
             if (level != -1 && scale != -1) {
                 // Convertir el porcentaje a un valor entre 0 y 1
                 val batteryPercentage = level / scale.toFloat()
                 Log.d("BatteryStatus", "Battery level: ${batteryPercentage}%")
 
-                // Obtener userId y deviceId
-                val userId = FirebaseAuth.getInstance().currentUser?.uid
-                val deviceId = getDeviceIdAsString()
+                val deviceContext = getCurrentDeviceContext() ?: return
 
                 // Si ambos userId y deviceId son válidos, actualizamos Firestore
-                if (userId != null) {
-                    if (hasBatteryChanged(batteryPercentage)) {
-                        updateBatteryField(batteryPercentage, userId, deviceId)
-                        lastBatteryPercentage = batteryPercentage
-                    }
+                if (hasBatteryChanged(batteryPercentage)) {
+                    updateBatteryField(batteryPercentage, deviceContext)
+                    lastBatteryPercentage = batteryPercentage
                 }
             } else {
                 Log.e("BatteryStatus", "Unable to get battery level")
@@ -466,11 +468,8 @@ class BackgroundService : Service() {
         return Math.abs(newBatteryPercentage - lastBatteryPercentage) >= 0.01
     }
 
-    private fun updateBatteryField(batteryPercentage: Float, userId: String, deviceId: String) {
-        val deviceDocRef = firestore.collection("users")
-            .document(userId)
-            .collection("devices")
-            .document(deviceId)
+    private fun updateBatteryField(batteryPercentage: Float, deviceContext: DeviceContext) {
+        val deviceDocRef = getDeviceDocRef(deviceContext)
 
         deviceDocRef.update("battery", batteryPercentage)
             .addOnSuccessListener {
@@ -484,9 +483,8 @@ class BackgroundService : Service() {
 
 
     private fun startListeningForUserPreferences() {
-        val userId = auth.currentUser?.uid ?: return
-        val deviceId = getDeviceIdAsString()
-        val deviceDocRef = firestore.collection("users").document(userId).collection("devices").document(deviceId)
+        val deviceContext = getCurrentDeviceContext() ?: return
+        val deviceDocRef = getDeviceDocRef(deviceContext)
 
         userPreferencesListener?.remove()
         userPreferencesListener = deviceDocRef.addSnapshotListener { snapshot, e ->
@@ -496,77 +494,95 @@ class BackgroundService : Service() {
             }
 
             if (snapshot != null && snapshot.exists()) {
-                val trackingEnabled = snapshot.getBoolean("trackingEnabled") ?: true
-                val newRecordingEnabled = snapshot.getBoolean("recordingEnabled") ?: false
-                locationUpdateInterval = snapshot.getLong("locationUpdateInterval") ?: 10000L
-                recordingCycleDuration = snapshot.getLong("recordingCycleDuration") ?: 60000L
-                val takePhoto = snapshot.getBoolean("takePhoto") ?: false
-                val takePicture = snapshot.getBoolean("takePicture") ?: false
-                val soundEnabled = snapshot.getBoolean("sound") ?: false
-                val requestUsagePermission = snapshot.getBoolean("requestUsagePermission") ?: false
-                verificarPermisoDeUso(this, requestUsagePermission, deviceDocRef)
-                val trackApps = snapshot.getBoolean("trackApps") ?: false
-
-                // 🛰️ Manejar el tracking según Firestore
-                if (trackingEnabled) {
-                    stopLocationUpdates()
-                    startLocationUpdates()
-                } else {
-                    stopLocationUpdates()
-                }
-
-                // 🎙️ Manejar la grabación de audio según Firestore
-                if (newRecordingEnabled && !isRecording) {
-                    stopListening() // 🔇 Detener el reconocimiento de voz antes de grabar
-                    startRecordingCycle()
-                } else if (!newRecordingEnabled && isRecording) {
-                    stopRecordingAndUpload(filePath)
-                   // startListening() // 🔊 Reactivar el reconocimiento de voz después de grabar
-                }
-
-                // 📸 Manejar la toma de fotos si `takePhoto` es `true`
-                if (takePhoto) {
-                    takePhotoAndUpload() // Tomar la foto y subirla
-                    updateTakePhotoField(false) // Cambiar takePhoto a false después de tomar la foto
-                }
-                // 🖼️ Manejar captura de pantalla si `takePicture` es `true`
-                /*if (takePicture == true) {
-                    Log.d("SilentCapture", "📸 takePicture = true detectado. Intentando iniciar SilentCaptureActivity...")
-                    launchSilentCaptureIfPermissionAvailable()
-                }*/
-
-                // 🔔 Reproducir sonido de alarma si `soundEnabled` es `true`
-                if (soundEnabled) {
-                    playAlarmSound() // Reproducir el sonido de alarma
-                    updateSoundField(false, userId, deviceId) // Reiniciar el campo a `false`
-                }
-                // 📺 monitoreo apps
-                if (trackApps) {
-                    handleTrackApps(deviceDocRef)
-                }
-
-                // 👁️ Revisar si se debe volver a solicitar permiso USAGE_STATS
-
-                if (requestUsagePermission) {
-                    if (!hasUsageStatsPermission(this)) {
-                        Log.d("Permissions", "🔁 Campo 'requestUsagePermission' es true. Lanzando pantalla de permisos.")
-                        requestUsageAccess(this)
-                        deviceDocRef.update("requestUsagePermission", false)
-                            .addOnSuccessListener {
-                                Log.d("Permissions", "🧹 requestUsagePermission actualizado a false después de lanzar pantalla de permiso.")
-                            }
-                            .addOnFailureListener { e ->
-                                Log.e("Permissions", "❌ Error al actualizar requestUsagePermission: ${e.message}")
-                            }
-                    } else {
-                        Log.d("Permissions", "✅ Permiso USAGE_STATS ya otorgado.")
-                    }
-                }
+                handleDevicePreferencesSnapshot(snapshot, deviceDocRef, deviceContext)
             }
         }
     }
+
+    private fun handleDevicePreferencesSnapshot(
+        snapshot: DocumentSnapshot,
+        deviceDocRef: DocumentReference,
+        deviceContext: DeviceContext
+    ) {
+        val trackingEnabled = snapshot.getBoolean("trackingEnabled") ?: true
+        val newRecordingEnabled = snapshot.getBoolean("recordingEnabled") ?: false
+        locationUpdateInterval = snapshot.getLong("locationUpdateInterval") ?: 10000L
+        recordingCycleDuration = snapshot.getLong("recordingCycleDuration") ?: 60000L
+        val takePhoto = snapshot.getBoolean("takePhoto") ?: false
+        val soundEnabled = snapshot.getBoolean("sound") ?: false
+        val requestUsagePermission = snapshot.getBoolean("requestUsagePermission") ?: false
+        val trackApps = snapshot.getBoolean("trackApps") ?: false
+
+        handleTrackingPreference(trackingEnabled)
+        handleRecordingPreference(newRecordingEnabled)
+        handlePhotoPreference(takePhoto)
+        handleSoundPreference(soundEnabled, deviceContext)
+        handleTrackAppsPreference(trackApps, deviceDocRef)
+        handleUsagePermissionPreference(requestUsagePermission, deviceDocRef)
+
+        verificarPermisoDeUso(this, requestUsagePermission, deviceDocRef)
+    }
+
+    private fun handleTrackingPreference(trackingEnabled: Boolean) {
+        if (trackingEnabled) {
+            stopLocationUpdates()
+            startLocationUpdates()
+        } else {
+            stopLocationUpdates()
+        }
+    }
+
+    private fun handleRecordingPreference(recordingEnabled: Boolean) {
+        if (recordingEnabled && !isRecording) {
+            stopListening()
+            startRecordingCycle()
+        } else if (!recordingEnabled && isRecording) {
+            stopRecordingAndUpload(filePath)
+        }
+    }
+
+    private fun handlePhotoPreference(takePhoto: Boolean) {
+        if (takePhoto) {
+            takePhotoAndUpload()
+            updateTakePhotoField(false)
+        }
+    }
+
+    private fun handleSoundPreference(soundEnabled: Boolean, deviceContext: DeviceContext) {
+        if (soundEnabled) {
+            playAlarmSound()
+            updateSoundField(false, deviceContext)
+        }
+    }
+
+    private fun handleTrackAppsPreference(trackApps: Boolean, deviceDocRef: DocumentReference) {
+        if (trackApps) {
+            handleTrackApps(deviceDocRef)
+        }
+    }
+
+    private fun handleUsagePermissionPreference(
+        requestUsagePermission: Boolean,
+        deviceDocRef: DocumentReference
+    ) {
+        if (!requestUsagePermission) return
+
+        if (!hasUsageStatsPermission(this)) {
+            Log.d("Permissions", "🔁 Campo 'requestUsagePermission' es true. Lanzando pantalla de permisos.")
+            requestUsageAccess(this)
+            deviceDocRef.update("requestUsagePermission", false)
+                .addOnSuccessListener {
+                    Log.d("Permissions", "🧹 requestUsagePermission actualizado a false después de lanzar pantalla de permiso.")
+                }
+                .addOnFailureListener { err ->
+                    Log.e("Permissions", "❌ Error al actualizar requestUsagePermission: ${err.message}")
+                }
+        } else {
+            Log.d("Permissions", "✅ Permiso USAGE_STATS ya otorgado.")
+        }
+    }
     private fun handleTrackApps(deviceDocRef: DocumentReference) {
-        val userId = auth.currentUser?.uid ?: return
+        val deviceContext = getCurrentDeviceContext() ?: return
         val usageStatsManager = getSystemService(Context.USAGE_STATS_SERVICE) as UsageStatsManager
         val endTime = System.currentTimeMillis()
         val startTime = endTime - TimeUnit.DAYS.toMillis(1) // Últimas 24 horas
@@ -583,36 +599,16 @@ class BackgroundService : Service() {
             return
         }
 
-        val usageRootRef = firestore.collection("users")
-            .document(userId)
-            .collection("devices")
-            .document(getDeviceIdAsString())
-            .collection("usage")
+        val usageRootRef = getUsageRootRef(deviceContext)
 
         val pm = packageManager
 
         for (usage in filteredStats) {
             try {
-                val appInfo = pm.getApplicationInfo(usage.packageName, 0)
-                val isSystemApp = (appInfo.flags and android.content.pm.ApplicationInfo.FLAG_SYSTEM) != 0 ||
-                                  (appInfo.flags and android.content.pm.ApplicationInfo.FLAG_UPDATED_SYSTEM_APP) != 0
-                if (isSystemApp) {
-                    // Excluir apps del sistema, pero incluir apps relevantes como YouTube, Instagram, etc.
-                    val allowlistedApps = listOf("com.google.android.youtube", "com.instagram.android", "com.facebook.katana")
-                    if (!allowlistedApps.contains(usage.packageName)) continue
-                }
+                if (!isTrackAppsPackageAllowed(pm, usage.packageName)) continue
 
-                val segments = usage.packageName.split(".")
-                val packageId = if (segments.size >= 3) segments[2] else usage.packageName
-
-                val data = hashMapOf(
-                    "packageName" to usage.packageName,
-                    "totalTimeInForeground" to usage.totalTimeInForeground,
-                    "lastTimeUsed" to usage.lastTimeUsed,
-                    "firstTimeStamp" to usage.firstTimeStamp,
-                    "lastTimeStamp" to usage.lastTimeStamp,
-                    "timestampUpload" to Date()
-                )
+                val packageId = resolvePackageId(usage.packageName)
+                val data = buildUsageData(usage)
 
                 usageRootRef.document(packageId).set(data, SetOptions.merge())
                     .addOnSuccessListener {
@@ -643,7 +639,7 @@ class BackgroundService : Service() {
             .setMinUpdateIntervalMillis(locationUpdateInterval)
             .build()
 
-        locationCallback = object : LocationCallback() {
+        val callback = object : LocationCallback() {
             override fun onLocationResult(locationResult: LocationResult) {
                 for (location in locationResult.locations) {
                     Log.d("BackgroundService", "Location: ${location.latitude}, ${location.longitude}, ${locationUpdateInterval}")
@@ -651,10 +647,11 @@ class BackgroundService : Service() {
                 }
             }
         }
+        locationCallback = callback
 
         try {
             if (checkPermissions()) {
-                fusedLocationClient.requestLocationUpdates(locationRequest, locationCallback!!, null)
+                fusedLocationClient.requestLocationUpdates(locationRequest, callback, null)
             } else {
                 Log.e("BackgroundService", "Location permission not granted")
             }
@@ -714,16 +711,32 @@ class BackgroundService : Service() {
        }
    }
 
+    private data class DeviceContext(val userId: String, val deviceId: String)
+
+    private fun getCurrentDeviceContext(): DeviceContext? {
+        val userId = auth.currentUser?.uid ?: return null
+        return DeviceContext(userId, getDeviceIdAsString())
+    }
+
+    private fun getDeviceDocRef(deviceContext: DeviceContext): DocumentReference {
+        return firestore.collection("users")
+            .document(deviceContext.userId)
+            .collection("devices")
+            .document(deviceContext.deviceId)
+    }
+
+    private fun getUsageRootRef(deviceContext: DeviceContext) =
+        getDeviceDocRef(deviceContext).collection("usage")
+
     private fun sendLocationToFirestore(latitude: Double, longitude: Double) {
         val currentTime = System.currentTimeMillis()
 
         if (currentTime - lastUpdateTimestamp >= locationUpdateInterval) {
             lastUpdateTimestamp = currentTime
 
-            val user = auth.currentUser
-            if (user != null) {
-                val userId = user.uid
-                val deviceId = getDeviceIdAsString()
+            val deviceContext = getCurrentDeviceContext()
+            if (deviceContext != null) {
+                val deviceDocRef = getDeviceDocRef(deviceContext)
 
                 // Crear un objeto GeoPoint para las coordenadas
                 val geoPoint = GeoPoint(latitude, longitude)
@@ -738,12 +751,10 @@ class BackgroundService : Service() {
                 )
 
                 // Guardar la ubicación en la subcolección "locations" del dispositivo
-                firestore.collection("users").document(userId)
-                    .collection("devices").document(deviceId)
-                    .collection("locations")
+                deviceDocRef.collection("locations")
                     .add(locationData)
                     .addOnSuccessListener {
-                        Log.d("BackgroundService", "Location successfully recorded in 'locations' collection for device: $deviceId")
+                        Log.d("BackgroundService", "Location successfully recorded in 'locations' collection for device: ${deviceContext.deviceId}")
                     }
                     .addOnFailureListener { e ->
                         Log.e("BackgroundService", "Error saving location: ${e.message}")
@@ -755,9 +766,7 @@ class BackgroundService : Service() {
                     "lastTimeStamp" to timestamp as Any
                 )
 
-                firestore.collection("users").document(userId)
-                    .collection("devices").document(deviceId)
-                    .set(deviceUpdates, SetOptions.merge())
+                deviceDocRef.set(deviceUpdates, SetOptions.merge())
                     .addOnSuccessListener {
                         Log.d("BackgroundService", "Device lastCoordinate and lastTimeStamp successfully updated")
                     }
@@ -776,6 +785,7 @@ class BackgroundService : Service() {
     private fun stopLocationUpdates() {
         locationCallback?.let {
             fusedLocationClient.removeLocationUpdates(it)
+            locationCallback = null
             Log.d("BackgroundService", "Location updates stopped")
         }
     }
@@ -1135,7 +1145,7 @@ class BackgroundService : Service() {
 
             try {
                 cameraProvider.unbindAll()
-                val camera = cameraProvider.bindToLifecycle(
+                cameraProvider.bindToLifecycle(
                     ProcessLifecycleOwner.get(), cameraSelector, imageCapture
                 )
                 isCameraActive = true
@@ -1242,7 +1252,7 @@ class BackgroundService : Service() {
 
             try {
                 cameraProvider.unbindAll()
-                val camera = cameraProvider.bindToLifecycle(
+                cameraProvider.bindToLifecycle(
                     ProcessLifecycleOwner.get(), cameraSelector, imageCapture
                 )
                 isCameraActive = true
@@ -1272,8 +1282,8 @@ class BackgroundService : Service() {
     private fun takePhotoAndUpload() {
         val context = applicationContext
         val cameraManager = context.getSystemService(Context.CAMERA_SERVICE) as? CameraManager
-        val userId = auth.currentUser?.uid ?: return
-        val deviceId = getDeviceIdAsString()
+        auth.currentUser?.uid ?: return
+        getDeviceIdAsString()
 
         if (cameraManager == null) {
             Log.e("CameraError", "Unable to get CameraManager")
@@ -1409,7 +1419,7 @@ class BackgroundService : Service() {
                 .setCaptureMode(ImageCapture.CAPTURE_MODE_MINIMIZE_LATENCY)
                 .build()
 
-            val camera = cameraProvider.bindToLifecycle(
+            cameraProvider.bindToLifecycle(
                 ProcessLifecycleOwner.get(), cameraSelector, imageCapture
             )
 
@@ -1533,13 +1543,8 @@ class BackgroundService : Service() {
     }
 
     private fun savePhotoUrlToFirestore(url: String) {
-        val userId = auth.currentUser?.uid ?: return
-        val deviceId = getDeviceIdAsString()
-
-        val deviceDocRef = firestore.collection("users")
-            .document(userId)
-            .collection("devices")
-            .document(deviceId)
+        val deviceContext = getCurrentDeviceContext() ?: return
+        val deviceDocRef = getDeviceDocRef(deviceContext)
 
         val timestamp = Date()
 
@@ -1560,13 +1565,8 @@ class BackgroundService : Service() {
     }
 
     private fun updateTakePhotoField(value: Boolean) {
-        val userId = auth.currentUser?.uid ?: return
-        val deviceId = getDeviceIdAsString()
-
-        firestore.collection("users")
-            .document(userId)
-            .collection("devices")
-            .document(deviceId)
+        val deviceContext = getCurrentDeviceContext() ?: return
+        getDeviceDocRef(deviceContext)
             .update("takePhoto", value)
             .addOnSuccessListener {
                 Log.d("BackgroundService", "takePhoto field updated to $value")
@@ -1588,8 +1588,8 @@ class BackgroundService : Service() {
     }
 
 
-    private fun updateSoundField(value: Boolean, userId: String, deviceId: String) {
-        val deviceDocRef = firestore.collection("users").document(userId).collection("devices").document(deviceId)
+    private fun updateSoundField(value: Boolean, deviceContext: DeviceContext) {
+        val deviceDocRef = getDeviceDocRef(deviceContext)
 
         deviceDocRef.update("sound", value)
             .addOnSuccessListener {
@@ -1715,12 +1715,8 @@ class BackgroundService : Service() {
                 }
                 Intent.ACTION_SCREEN_ON -> {
                     Log.d("ScreenStateReceiver", "Pantalla encendida: deteniendo SpeechRecognizer")
-                    // Detener, cancelar y destruir el SpeechRecognizer para liberar el micrófono
-                    stopListening()
-                    speechRecognizer?.cancel()
-                    speechRecognizer?.destroy()
-                    speechRecognizer = null
-                    isListening = false
+                    // Detener y liberar el SpeechRecognizer para liberar el micrófono
+                    releaseSpeechRecognizer(cancelFirst = true)
                 }
             }
         }
@@ -1782,18 +1778,16 @@ class BackgroundService : Service() {
                 }
 
                 // Reiniciar siempre, sin importar el estado de la pantalla
-                Handler(Looper.getMainLooper()).postDelayed({
+                scheduleSpeechRecognizerRestart(delay) {
                     if (!isRecording) { // Solo reiniciar si no estamos grabando
                         Log.d("SpeechRecognizer", "Reiniciando reconocimiento tras error: $error")
-                        speechRecognizer?.cancel()
-                        speechRecognizer?.destroy()
-                        speechRecognizer = null
+                        releaseSpeechRecognizer(cancelFirst = true)
                         initializeSpeechRecognizer()
                         tryStartSpeechRecognizer()
                     } else {
                         Log.d("SpeechRecognizer", "No se reinicia porque está grabando audio")
                     }
-                }, delay)
+                }
             }
         })
 
@@ -1809,6 +1803,20 @@ class BackgroundService : Service() {
         } else {
             Log.d("SpeechRecognizer", "No se inicia porque hay audio activo")
         }
+    }
+
+    private fun scheduleSpeechRecognizerRestart(delayMillis: Long, action: () -> Unit) {
+        Handler(Looper.getMainLooper()).postDelayed(action, delayMillis)
+    }
+
+    private fun releaseSpeechRecognizer(cancelFirst: Boolean) {
+        stopListening()
+        if (cancelFirst) {
+            speechRecognizer?.cancel()
+        }
+        speechRecognizer?.destroy()
+        speechRecognizer = null
+        isListening = false
     }
 
     // Monitoreo inteligente de audio para evitar conflictos
@@ -1908,13 +1916,8 @@ class BackgroundService : Service() {
         }
 
         // 🔥 Obtener el ID del usuario y el dispositivo
-        val userId = auth.currentUser?.uid ?: return
-        val deviceId = getDeviceIdAsString()
-
-        val deviceDocRef = firestore.collection("users")
-            .document(userId)
-            .collection("devices")
-            .document(deviceId)
+        val deviceContext = getCurrentDeviceContext() ?: return
+        val deviceDocRef = getDeviceDocRef(deviceContext)
 
         // 🔥 Obtener el nombre del dispositivo desde Firestore
         deviceDocRef.get()
@@ -1945,7 +1948,7 @@ class BackgroundService : Service() {
                     )
 
                     firestore.collection("users")
-                        .document(userId)
+                        .document(deviceContext.userId)
                         .collection("notifications")
                         .add(notificationData)
                         .addOnSuccessListener {
@@ -2057,13 +2060,8 @@ class BackgroundService : Service() {
 
     private fun uploadUsageStats() {
         val stats = appUsageManager.getAppUsageStats() ?: return
-        val userId = auth.currentUser?.uid ?: return
-        val deviceId = getDeviceIdAsString()
-        val usageRootRef = firestore.collection("users")
-            .document(userId)
-            .collection("devices")
-            .document(deviceId)
-            .collection("usage")
+        val deviceContext = getCurrentDeviceContext() ?: return
+        val usageRootRef = getUsageRootRef(deviceContext)
 
         val pm = applicationContext.packageManager
         val minForegroundMillis = 5 * 60 * 1000L // 5 minutos
@@ -2071,29 +2069,14 @@ class BackgroundService : Service() {
 
         for (usage in filteredStats) {
             try {
-                val appInfo = pm.getApplicationInfo(usage.packageName, 0)
-                val isSystemApp = (appInfo.flags and android.content.pm.ApplicationInfo.FLAG_SYSTEM) != 0 ||
-                                  (appInfo.flags and android.content.pm.ApplicationInfo.FLAG_UPDATED_SYSTEM_APP) != 0
-                // Si es una app de sistema, la podemos omitir o procesarla aparte.
-                if (isSystemApp) {
+                if (isSystemPackage(pm, usage.packageName)) {
                     Log.d("AppUsageUpload", "Skipping system app: ${usage.packageName}")
                     continue
                 }
 
-                // Extraer el tercer segmento del package name para usarlo como ID
-                val segments = usage.packageName.split(".")
-                val packageId = if (segments.size >= 3) segments[2] else usage.packageName
-
-                // Construir la referencia al documento con ID packageId
+                val packageId = resolvePackageId(usage.packageName)
                 val packageUsageRef = usageRootRef.document(packageId).collection("stats")
-                val data = hashMapOf(
-                    "packageName" to usage.packageName,
-                    "totalTimeInForeground" to usage.totalTimeInForeground,
-                    "lastTimeUsed" to usage.lastTimeUsed,
-                    "firstTimeStamp" to usage.firstTimeStamp,
-                    "lastTimeStamp" to usage.lastTimeStamp,
-                    "timestampUpload" to Date()
-                )
+                val data = buildUsageData(usage)
                 packageUsageRef.document("usageData").set(data, SetOptions.merge())
                     .addOnSuccessListener {
                         Log.d("AppUsageUpload", "Uploaded usage for package: ${usage.packageName} under id: $packageId")
@@ -2105,6 +2088,39 @@ class BackgroundService : Service() {
                 Log.e("AppUsageUpload", "Package not found: ${usage.packageName}")
             }
         }
+    }
+
+    private fun resolvePackageId(packageName: String): String {
+        val segments = packageName.split(".")
+        return if (segments.size >= 3) segments[2] else packageName
+    }
+
+    private fun buildUsageData(usage: UsageStats): Map<String, Any> {
+        return hashMapOf(
+            "packageName" to usage.packageName,
+            "totalTimeInForeground" to usage.totalTimeInForeground,
+            "lastTimeUsed" to usage.lastTimeUsed,
+            "firstTimeStamp" to usage.firstTimeStamp,
+            "lastTimeStamp" to usage.lastTimeStamp,
+            "timestampUpload" to Date()
+        )
+    }
+
+    private fun isSystemPackage(pm: PackageManager, packageName: String): Boolean {
+        val appInfo = pm.getApplicationInfo(packageName, 0)
+        return (appInfo.flags and android.content.pm.ApplicationInfo.FLAG_SYSTEM) != 0 ||
+            (appInfo.flags and android.content.pm.ApplicationInfo.FLAG_UPDATED_SYSTEM_APP) != 0
+    }
+
+    private fun isTrackAppsPackageAllowed(pm: PackageManager, packageName: String): Boolean {
+        if (!isSystemPackage(pm, packageName)) return true
+
+        val allowlistedApps = setOf(
+            "com.google.android.youtube",
+            "com.instagram.android",
+            "com.facebook.katana"
+        )
+        return allowlistedApps.contains(packageName)
     }
 
     private fun verificarPermisoDeUso(context: Context, requestRemote: Boolean, deviceDocRef: DocumentReference) {
@@ -2145,10 +2161,8 @@ class BackgroundService : Service() {
         override fun onReceive(context: Context, intent: Intent) {
             Log.d("ManualActivation", "Se recibió activación manual desde el botón")
             // Actualiza en Firestore los campos trackingEnabled y recordingEnabled a true
-            val userId = auth.currentUser?.uid ?: return
-            val deviceId = getDeviceIdAsString()  // Asegúrate de que esta función retorne el valor correcto
-            val deviceDocRef = firestore.collection("users").document(userId)
-                .collection("devices").document(deviceId)
+            val deviceContext = getCurrentDeviceContext() ?: return
+            val deviceDocRef = getDeviceDocRef(deviceContext)
             // Define el mapa de actualizaciones con el tipo MutableMap<String, Any>
             val updates: MutableMap<String, Any> = mutableMapOf(
                 "trackingEnabled" to true,
@@ -2167,7 +2181,10 @@ class BackgroundService : Service() {
     }
     override fun onDestroy() {
         Log.d("BackgroundService", "Service onDestroy called")
-        unregisterReceiver(manualActivationReceiver)
+        if (isManualActivationReceiverRegistered) {
+            unregisterReceiver(manualActivationReceiver)
+            isManualActivationReceiverRegistered = false
+        }
         userPreferencesListener?.remove()
         userPreferencesListener = null
 
@@ -2176,8 +2193,14 @@ class BackgroundService : Service() {
         stopListening() // 🎙️ Detener reconocimiento de voz si está activo
         stopAudioMonitoring() // 🔊 Detener monitoreo de audio
 
-        unregisterReceiver(batteryStatusReceiver) // 🔋 Detener monitoreo de batería
-        unregisterReceiver(screenStateReceiver)
+        if (isBatteryReceiverRegistered) {
+            unregisterReceiver(batteryStatusReceiver) // 🔋 Detener monitoreo de batería
+            isBatteryReceiverRegistered = false
+        }
+        if (isScreenReceiverRegistered) {
+            unregisterReceiver(screenStateReceiver)
+            isScreenReceiverRegistered = false
+        }
         // 🔊 Restaurar sonido del sistema si se había silenciado
         audioManager?.adjustStreamVolume(
             AudioManager.STREAM_SYSTEM,
@@ -2192,8 +2215,7 @@ class BackgroundService : Service() {
         }
 
         // 🎙️ Destruir `SpeechRecognizer` solo si estaba inicializado
-        speechRecognizer?.destroy()
-        speechRecognizer = null
+        releaseSpeechRecognizer(cancelFirst = false)
         //usageHandler.removeCallbacks(usageRunnable)
 
         super.onDestroy()

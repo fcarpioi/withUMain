@@ -12,14 +12,17 @@ import androidx.core.content.ContextCompat
 class ConnectivityReceiver(private val context: Context) {
 
     private val connectivityManager = context.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
+    private var networkCallback: ConnectivityManager.NetworkCallback? = null
 
     // Registrar un callback para detectar cambios de conectividad
     fun registerNetworkCallback() {
+        if (networkCallback != null) return
+
         val networkRequest = NetworkRequest.Builder()
             .addCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
             .build()
 
-        connectivityManager.registerNetworkCallback(networkRequest, object : ConnectivityManager.NetworkCallback() {
+        networkCallback = object : ConnectivityManager.NetworkCallback() {
             override fun onAvailable(network: Network) {
                 Log.d("ConnectivityReceiver", "Network available, starting service...")
 
@@ -32,14 +35,19 @@ class ConnectivityReceiver(private val context: Context) {
                 Log.d("ConnectivityReceiver", "Network lost")
                 // Manejar la pérdida de conexión si es necesario
             }
-        })
+        }
+
+        connectivityManager.registerNetworkCallback(networkRequest, networkCallback!!)
     }
 
     // Método para anular el registro del callback si es necesario
     fun unregisterNetworkCallback() {
         try {
-            connectivityManager.unregisterNetworkCallback(ConnectivityManager.NetworkCallback())
-            Log.d("ConnectivityReceiver", "NetworkCallback unregistered")
+            networkCallback?.let {
+                connectivityManager.unregisterNetworkCallback(it)
+                networkCallback = null
+                Log.d("ConnectivityReceiver", "NetworkCallback unregistered")
+            }
         } catch (e: Exception) {
             Log.e("ConnectivityReceiver", "Error while unregistering NetworkCallback: ${e.message}")
         }
