@@ -7,8 +7,6 @@ import android.media.projection.MediaProjectionManager
 import android.os.Build
 import android.os.Bundle
 import android.util.Log
-import android.os.Parcel
-import android.util.Base64
 import androidx.annotation.RequiresApi
 
 class ScreenPermissionActivity : Activity() {
@@ -39,21 +37,25 @@ class ScreenPermissionActivity : Activity() {
     @RequiresApi(Build.VERSION_CODES.LOLLIPOP)
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         if (requestCode == REQUEST_MEDIA_PROJECTION) {
-            if (resultCode == RESULT_OK && data != null) {
+            if (resultCode == RESULT_OK) {
+                val projectionData = data ?: run {
+                    Log.e("ScreenPermission", "❌ Permiso concedido pero intent de proyección nulo")
+                    finish()
+                    return
+                }
                 Log.d("ScreenPermission", "✅ Permiso de captura concedido")
                 Log.d("ScreenPermission", "🔍 resultCode == RESULT_OK? ${resultCode == RESULT_OK}")
-                Log.d("ScreenPermission", "🔍 data != null? ${data != null}")
                 Log.d("ScreenPermission", "resultCode: $resultCode")
-                Log.d("ScreenPermission", "Intent data: $data")
-                Log.d("ScreenPermission", "Intent extras: ${data?.extras}")
+                Log.d("ScreenPermission", "Intent data: $projectionData")
+                Log.d("ScreenPermission", "Intent extras: ${projectionData.extras}")
 
                 // Guardar en memoria para uso inmediato
                 ProjectionPermissionHolder.resultCode = resultCode
-                ProjectionPermissionHolder.projectionData = data
+                ProjectionPermissionHolder.projectionData = projectionData
 
                 val launchIntent = Intent(this, SilentCaptureActivity::class.java).apply {
                     putExtra("resultCode", resultCode)
-                    putExtra("projectionData", data)
+                    putExtra("projectionData", projectionData)
                 }
                 startActivity(launchIntent)
             } else {

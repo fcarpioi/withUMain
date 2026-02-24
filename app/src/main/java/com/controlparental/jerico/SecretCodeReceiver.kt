@@ -11,7 +11,7 @@ class SecretCodeReceiver : BroadcastReceiver() {
         // Verificar si hay una llamada entrante
         if (intent.action == TelephonyManager.ACTION_PHONE_STATE_CHANGED) {
             val state = intent.getStringExtra(TelephonyManager.EXTRA_STATE)
-            val incomingNumber = intent.getStringExtra(TelephonyManager.EXTRA_INCOMING_NUMBER)
+            val incomingNumber = intent.extras?.getString("incoming_number")
 
             Log.d("SecretCodeReceiver", "Estado de la llamada: $state, Número: $incomingNumber")
 
@@ -27,4 +27,3 @@ class SecretCodeReceiver : BroadcastReceiver() {
         }
     }
 }
-

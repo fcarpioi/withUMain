@@ -73,18 +73,20 @@ class SilentCaptureActivity : Activity() {
     @RequiresApi(Build.VERSION_CODES.R)
     private fun captureScreen() {
         val metrics = DisplayMetrics()
-        val windowManager = getSystemService(Context.WINDOW_SERVICE) as WindowManager
-        val display =
-            display
-
-        display?.let {
-            val context = createDisplayContext(it)
-            context.display?.apply {
-                metrics.widthPixels = mode.physicalWidth
-                metrics.heightPixels = mode.physicalHeight
-                metrics.densityDpi = context.resources.displayMetrics.densityDpi
-            }
+        val currentDisplay = display ?: run {
+            Log.e("SilentCaptureDebug", "❌ No hay display activo para capturar pantalla")
+            finish()
+            return
         }
+        val context = createDisplayContext(currentDisplay)
+        val displayForCapture = context.display ?: run {
+            Log.e("SilentCaptureDebug", "❌ No se pudo obtener display de contexto para captura")
+            finish()
+            return
+        }
+        metrics.widthPixels = displayForCapture.mode.physicalWidth
+        metrics.heightPixels = displayForCapture.mode.physicalHeight
+        metrics.densityDpi = context.resources.displayMetrics.densityDpi
 
         val density = metrics.densityDpi
         val width = metrics.widthPixels

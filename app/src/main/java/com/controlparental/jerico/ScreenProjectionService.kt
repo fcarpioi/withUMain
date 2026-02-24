@@ -108,7 +108,10 @@ class ScreenProjectionService : Service() {
         val metrics = DisplayMetrics()
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-            display?.getRealMetrics(metrics)
+            val bounds = windowManager.currentWindowMetrics.bounds
+            metrics.widthPixels = bounds.width()
+            metrics.heightPixels = bounds.height()
+            metrics.densityDpi = resources.displayMetrics.densityDpi
         } else {
             @Suppress("DEPRECATION")
             windowManager.defaultDisplay.getMetrics(metrics)

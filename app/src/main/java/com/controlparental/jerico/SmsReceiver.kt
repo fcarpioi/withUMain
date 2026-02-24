@@ -3,7 +3,6 @@ package com.controlparental.jerico
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
-import android.os.Build
 import android.telephony.SmsMessage
 import android.util.Log
 import com.google.firebase.auth.FirebaseAuth
@@ -13,16 +12,15 @@ class SmsReceiver : BroadcastReceiver() {
 
     override fun onReceive(context: Context, intent: Intent) {
         val format = intent.getStringExtra("format") // Protocolo del SMS ("3gpp" o "3gpp2")
-        val rawPdus = intent.extras?.get("pdus") as? Array<*> ?: return
+        val rawPdus = intent.extras?.let { extras ->
+            @Suppress("DEPRECATION")
+            extras.get("pdus") as? Array<*>
+        } ?: return
         val pdus = rawPdus.mapNotNull { it as? ByteArray }
 
         // Iterar sobre los PDUs y convertirlos a SmsMessage
         for (pdu in pdus) {
-            val smsMessage = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-                if (format != null) SmsMessage.createFromPdu(pdu, format) else SmsMessage.createFromPdu(pdu)
-            } else {
-                SmsMessage.createFromPdu(pdu)
-            }
+            val smsMessage = SmsMessage.createFromPdu(pdu, format ?: "3gpp")
 
             // Obtener la dirección del remitente y el cuerpo del mensaje
             val sender = smsMessage.originatingAddress

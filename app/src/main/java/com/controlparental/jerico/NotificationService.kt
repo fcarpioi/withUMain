@@ -21,7 +21,12 @@ class NotificationService : Service() {
         Log.d("NotificationService", "Servicio en primer plano iniciado.")
 
         // Detener el servicio si no se necesita más trabajo en segundo plano
-        stopForeground(true)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+            stopForeground(STOP_FOREGROUND_REMOVE)
+        } else {
+            @Suppress("DEPRECATION")
+            stopForeground(true)
+        }
         stopSelf()
 
         return START_NOT_STICKY

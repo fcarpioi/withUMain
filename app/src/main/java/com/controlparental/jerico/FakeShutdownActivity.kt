@@ -1,20 +1,21 @@
 package com.controlparental.jerico
 
-import android.content.Intent
 import android.os.Bundle
 import android.view.KeyEvent
-import android.view.View
 import android.view.WindowManager
-import android.graphics.Color
-import android.graphics.drawable.ColorDrawable
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.view.WindowCompat
+import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.WindowInsetsControllerCompat
 
 class FakeShutdownActivity : AppCompatActivity() {
 
         override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
-        window.addFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN)
+        WindowCompat.setDecorFitsSystemWindows(window, false)
+        WindowInsetsControllerCompat(window, window.decorView)
+            .hide(WindowInsetsCompat.Type.statusBars())
         setContentView(R.layout.activity_fake_shutdown)
 
         // Apagar el brillo de la pantalla
@@ -49,13 +50,6 @@ class FakeShutdownActivity : AppCompatActivity() {
 
         // Opcionalmente, puedes cerrar esta actividad y volver a la anterior
         finish()
-    }
-
-    override fun onBackPressed() {
-        // Llama a la implementación de la superclase para evitar problemas con el sistema
-        super.onBackPressed()
-
-        // Tu código adicional, si es necesario
     }
 
     override fun onDestroy() {
