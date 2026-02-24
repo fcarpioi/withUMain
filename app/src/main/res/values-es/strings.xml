@@ -1,14 +1,8 @@
 <resources>
     <string name="app_name">WithU Familiar</string>
-    <string name="start_service">Iniciar Servicio</string>
-    <string name="email">Correo Electrónico</string>
-    <string name="pin">PIN</string>
-    <string name="start">Iniciar</string>
     <string name="slogan">Estoy contigo, no te dejaré</string>
     <string name="alert_message">🚨 Alerta activada desde el dispositivo %1$s</string>
-    <string name="instruction_text">Apunte la cámara al código QR</string>
     <string name="password_dialog_title">Contraseña del padre</string>
-    <string name="password_dialog_message">Ingresa la contraseña para continuar</string>
     <string name="password_hint">Contraseña</string>
     <string name="password_empty_error">La contraseña no puede estar vacía</string>
     <string name="password_cancelled">Operación cancelada</string>

@@ -10,7 +10,6 @@ buildscript {
         classpath libs.gradle.v814
         classpath "org.jetbrains.kotlin:kotlin-gradle-plugin:$kotlin_version"
         classpath libs.google.services // O la versión más reciente
-        classpath libs.gradle
     }
 
 
