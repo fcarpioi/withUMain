@@ -608,15 +608,12 @@ class BackgroundService : Service() {
                 if (!isTrackAppsPackageAllowed(pm, usage.packageName)) continue
 
                 val packageId = resolvePackageId(usage.packageName)
-                val data = buildUsageData(usage)
-
-                usageRootRef.document(packageId).set(data, SetOptions.merge())
-                    .addOnSuccessListener {
-                        Log.d("TrackApps", "Uso guardado para paquete: ${usage.packageName}")
-                    }
-                    .addOnFailureListener { e ->
-                        Log.e("TrackApps", "Error al guardar uso para ${usage.packageName}: ${e.message}")
-                    }
+                persistUsageData(
+                    targetRef = usageRootRef.document(packageId),
+                    usage = usage,
+                    logTag = "TrackApps",
+                    successPrefix = "Uso guardado para paquete"
+                )
 
             } catch (e: PackageManager.NameNotFoundException) {
                 Log.e("TrackApps", "App no encontrada: ${usage.packageName}")
@@ -2085,18 +2082,31 @@ class BackgroundService : Service() {
 
                 val packageId = resolvePackageId(usage.packageName)
                 val packageUsageRef = usageRootRef.document(packageId).collection("stats")
-                val data = buildUsageData(usage)
-                packageUsageRef.document("usageData").set(data, SetOptions.merge())
-                    .addOnSuccessListener {
-                        Log.d("AppUsageUpload", "Uploaded usage for package: ${usage.packageName} under id: $packageId")
-                    }
-                    .addOnFailureListener { e ->
-                        Log.e("AppUsageUpload", "Failed to upload usage for ${usage.packageName}: ${e.message}")
-                    }
+                persistUsageData(
+                    targetRef = packageUsageRef.document("usageData"),
+                    usage = usage,
+                    logTag = "AppUsageUpload",
+                    successPrefix = "Uploaded usage for package"
+                )
             } catch (e: PackageManager.NameNotFoundException) {
                 Log.e("AppUsageUpload", "Package not found: ${usage.packageName}")
             }
         }
+    }
+
+    private fun persistUsageData(
+        targetRef: DocumentReference,
+        usage: UsageStats,
+        logTag: String,
+        successPrefix: String
+    ) {
+        targetRef.set(buildUsageData(usage), SetOptions.merge())
+            .addOnSuccessListener {
+                Log.d(logTag, "$successPrefix: ${usage.packageName}")
+            }
+            .addOnFailureListener { e ->
+                Log.e(logTag, "Failed to persist usage for ${usage.packageName}: ${e.message}")
+            }
     }
 
     private fun resolvePackageId(packageName: String): String {
