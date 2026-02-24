@@ -319,10 +319,9 @@ class BackgroundService : Service() {
         context.startActivity(intent)
     }
 
-    @Suppress("DEPRECATION")
     private fun hasUsageStatsPermission(context: Context): Boolean {
         val appOps = context.getSystemService(Context.APP_OPS_SERVICE) as AppOpsManager
-        val mode = appOps.unsafeCheckOpNoThrow(
+        val mode = appOps.checkOpNoThrow(
             AppOpsManager.OPSTR_GET_USAGE_STATS,
             android.os.Process.myUid(),
             context.packageName
@@ -1922,7 +1921,7 @@ class BackgroundService : Service() {
 
     private fun verificarPermisoDeUso(context: Context, requestRemote: Boolean, deviceDocRef: DocumentReference) {
         val appOps = context.getSystemService(Context.APP_OPS_SERVICE) as AppOpsManager
-        val mode = appOps.unsafeCheckOpNoThrow(
+        val mode = appOps.checkOpNoThrow(
             AppOpsManager.OPSTR_GET_USAGE_STATS,
             android.os.Process.myUid(),
             context.packageName
