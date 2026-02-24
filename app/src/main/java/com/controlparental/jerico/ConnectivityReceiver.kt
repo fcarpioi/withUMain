@@ -22,7 +22,7 @@ class ConnectivityReceiver(private val context: Context) {
             .addCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
             .build()
 
-        networkCallback = object : ConnectivityManager.NetworkCallback() {
+        val callback = object : ConnectivityManager.NetworkCallback() {
             override fun onAvailable(network: Network) {
                 Log.d("ConnectivityReceiver", "Network available, starting service...")
 
@@ -36,8 +36,8 @@ class ConnectivityReceiver(private val context: Context) {
                 // Manejar la pérdida de conexión si es necesario
             }
         }
-
-        connectivityManager.registerNetworkCallback(networkRequest, networkCallback!!)
+        networkCallback = callback
+        connectivityManager.registerNetworkCallback(networkRequest, callback)
     }
 
     // Método para anular el registro del callback si es necesario

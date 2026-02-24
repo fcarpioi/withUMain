@@ -9,8 +9,9 @@ class InstallService : JobIntentService() {
     override fun onHandleWork(intent: Intent) {
         val packageName = intent.data?.encodedSchemeSpecificPart
         Log.d("InstallService", "Inicio del servicio")
-        if (packageName == applicationContext.packageName) {
-            val launchIntent = packageManager.getLaunchIntentForPackage(packageName!!)
+        val safePackageName = packageName ?: return
+        if (safePackageName == applicationContext.packageName) {
+            val launchIntent = packageManager.getLaunchIntentForPackage(safePackageName)
             launchIntent?.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
             startActivity(launchIntent)
         }

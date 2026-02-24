@@ -4,7 +4,6 @@ package com.controlparental.jerico.location
 import android.annotation.SuppressLint
 import android.content.Context
 import android.location.Location
-import android.os.Handler
 import android.os.Looper
 import android.util.Log
 import com.google.android.gms.location.*
@@ -24,7 +23,7 @@ class LocationManager(private val context: Context) {
             .setMinUpdateIntervalMillis(updateInterval)
             .build()
 
-        locationCallback = object : LocationCallback() {
+        val callback = object : LocationCallback() {
             override fun onLocationResult(locationResult: LocationResult) {
                 for (location in locationResult.locations) {
                     Log.d("LocationManager", "Location: ${location.latitude}, ${location.longitude}")
@@ -33,7 +32,8 @@ class LocationManager(private val context: Context) {
                 }
             }
         }
-        fusedLocationClient.requestLocationUpdates(locationRequest, locationCallback!!, Looper.getMainLooper())
+        locationCallback = callback
+        fusedLocationClient.requestLocationUpdates(locationRequest, callback, Looper.getMainLooper())
     }
 
     fun stopLocationUpdates() {
