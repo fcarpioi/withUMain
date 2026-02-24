@@ -1,5 +1,6 @@
 # Directorios de Gradle y compilación
 .gradle/
+.gradle-local/
 build/
 caches/
 daemon/
