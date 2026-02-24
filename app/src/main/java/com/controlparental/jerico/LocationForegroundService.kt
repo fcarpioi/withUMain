@@ -10,7 +10,6 @@ import android.content.pm.PackageManager
 import android.os.Build
 import android.os.IBinder
 import android.os.Looper
-import androidx.annotation.RequiresApi
 import androidx.core.app.NotificationCompat
 import android.location.Location
 import com.google.android.gms.location.*
@@ -164,7 +163,6 @@ class LocationForegroundService : Service() {
         Log.d("LocationForegroundService", "Actualizaciones de ubicación detenidas")
     }
 
-    @RequiresApi(Build.VERSION_CODES.O)
     private fun createNotification(): Notification {
         val channelId = "LocationForegroundServiceChannel"
         val channel = NotificationChannel(

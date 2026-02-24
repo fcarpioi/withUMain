@@ -16,6 +16,7 @@
         android:layout_marginTop="32dp"
         android:clickable="true"
         android:focusable="true"
+        android:contentDescription="@string/logo_description"
         android:src="@drawable/logo" />
 
     <!-- Botón de activación manual, justo debajo del logo con poco margen superior -->

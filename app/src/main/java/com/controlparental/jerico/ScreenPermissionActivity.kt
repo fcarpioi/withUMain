@@ -4,10 +4,8 @@ import android.app.Activity
 import android.content.Context
 import android.content.Intent
 import android.media.projection.MediaProjectionManager
-import android.os.Build
 import android.os.Bundle
 import android.util.Log
-import androidx.annotation.RequiresApi
 
 class ScreenPermissionActivity : Activity() {
 
@@ -15,7 +13,6 @@ class ScreenPermissionActivity : Activity() {
         const val REQUEST_MEDIA_PROJECTION = 1001
     }
 
-    @RequiresApi(Build.VERSION_CODES.LOLLIPOP)
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
@@ -34,7 +31,6 @@ class ScreenPermissionActivity : Activity() {
         startActivityForResult(permissionIntent, REQUEST_MEDIA_PROJECTION)
     }
 
-    @RequiresApi(Build.VERSION_CODES.LOLLIPOP)
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         if (requestCode == REQUEST_MEDIA_PROJECTION) {
             if (resultCode == RESULT_OK) {

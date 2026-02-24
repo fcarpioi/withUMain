@@ -548,7 +548,7 @@ class RegisterActivity : AppCompatActivity() {
         val cancelButton = dialog.findViewById<Button>(R.id.cancelButton)
 
         title.text = getString(R.string.password_dialog_title)
-        message.text = "Ingresa la contraseña para:\n$email"
+        message.text = getString(R.string.password_dialog_message_for_email, email)
 
         acceptButton.setOnClickListener {
             val password = input.text.toString()
@@ -588,12 +588,12 @@ class RegisterActivity : AppCompatActivity() {
         val acceptButton = dialog.findViewById<Button>(R.id.acceptButton)
         val cancelButton = dialog.findViewById<Button>(R.id.cancelButton)
 
-        title.text = "Debug QR"
-        message.text = "Ingresa el contenido del QR para probar:"
-        input.hint = "Ejemplo: {\"email\":\"test@example.com\",\"idDevice\":\"123\"}"
+        title.text = getString(R.string.debug_qr)
+        message.text = getString(R.string.debug_qr_prompt)
+        input.hint = getString(R.string.debug_qr_hint)
         input.inputType = android.text.InputType.TYPE_CLASS_TEXT or android.text.InputType.TYPE_TEXT_FLAG_MULTI_LINE
 
-        acceptButton.text = "Probar"
+        acceptButton.text = getString(R.string.button_test)
         acceptButton.setOnClickListener {
             val qrContent = input.text.toString()
             if (qrContent.isNotBlank()) {
@@ -602,7 +602,7 @@ class RegisterActivity : AppCompatActivity() {
                 processQRCode(qrContent)
                 dialog.dismiss()
             } else {
-                Toast.makeText(this, "Ingresa el contenido del QR", Toast.LENGTH_SHORT).show()
+                Toast.makeText(this, getString(R.string.debug_qr_empty_error), Toast.LENGTH_SHORT).show()
             }
         }
 
@@ -616,11 +616,7 @@ class RegisterActivity : AppCompatActivity() {
     private fun startBackgroundService() {
         try {
             val serviceIntent = Intent(this, BackgroundService::class.java)
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                startForegroundService(serviceIntent)
-            } else {
-                startService(serviceIntent)
-            }
+            startForegroundService(serviceIntent)
             Log.d("RegisterActivity", "✅ BackgroundService iniciado correctamente")
         } catch (e: Exception) {
             Log.e("RegisterActivity", "❌ Error iniciando BackgroundService: ${e.message}")

@@ -46,11 +46,9 @@ class ScreenProjectionService : Service() {
         val channelId = "screen_projection_service"
         val channelName = "Screen Projection Service"
 
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            val chan = NotificationChannel(channelId, channelName, NotificationManager.IMPORTANCE_LOW)
-            val manager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-            manager.createNotificationChannel(chan)
-        }
+        val chan = NotificationChannel(channelId, channelName, NotificationManager.IMPORTANCE_LOW)
+        val manager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+        manager.createNotificationChannel(chan)
 
         return Notification.Builder(this, channelId)
             .setContentTitle("Control Parental")
