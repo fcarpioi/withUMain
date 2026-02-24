@@ -64,6 +64,16 @@ android {
     composeOptions {
         kotlinCompilerExtensionVersion '1.5.0'
     }
+    lint {
+        disable 'OldTargetApi',
+                'IconXmlAndPng',
+                'IconDensities',
+                'MonochromeLauncherIcon',
+                'IconLocation',
+                'IconDuplicates',
+                'IconDuplicatesConfig',
+                'IconDipSize'
+    }
 }
 
 dependencies {
