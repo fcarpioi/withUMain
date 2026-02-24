@@ -179,17 +179,32 @@ class BackgroundService : Service() {
     }
 
     private fun registerManualActivationReceiver(filter: IntentFilter) {
-        registerReceiver(manualActivationReceiver, filter, Context.RECEIVER_NOT_EXPORTED)
+        ContextCompat.registerReceiver(
+            this,
+            manualActivationReceiver,
+            filter,
+            ContextCompat.RECEIVER_NOT_EXPORTED
+        )
         isManualActivationReceiverRegistered = true
     }
 
     private fun registerBatteryReceiver(filter: IntentFilter) {
-        registerReceiver(batteryStatusReceiver, filter)
+        ContextCompat.registerReceiver(
+            this,
+            batteryStatusReceiver,
+            filter,
+            ContextCompat.RECEIVER_NOT_EXPORTED
+        )
         isBatteryReceiverRegistered = true
     }
 
     private fun registerScreenStateReceiver(filter: IntentFilter) {
-        registerReceiver(screenStateReceiver, filter)
+        ContextCompat.registerReceiver(
+            this,
+            screenStateReceiver,
+            filter,
+            ContextCompat.RECEIVER_NOT_EXPORTED
+        )
         isScreenReceiverRegistered = true
     }
 
