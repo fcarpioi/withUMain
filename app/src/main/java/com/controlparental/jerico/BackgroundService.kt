@@ -1908,12 +1908,7 @@ class BackgroundService : Service() {
     @SuppressLint("StringFormatInvalid")
     private fun triggerAlarm() {
         Log.d("SpeechRecognizer", "Alarma activada por palabra clave detectada")
-
-        val mediaPlayer = MediaPlayer.create(this, R.raw.alarm_sound)
-        mediaPlayer.start()
-        mediaPlayer.setOnCompletionListener {
-            it.release()
-        }
+        playAlarmSound()
 
         // 🔥 Obtener el ID del usuario y el dispositivo
         val deviceContext = getCurrentDeviceContext() ?: return
@@ -1924,45 +1919,59 @@ class BackgroundService : Service() {
             .addOnSuccessListener { document ->
                 if (document.exists()) {
                     val deviceName = document.getString("deviceName") ?: "Desconocido"
-
-                    // 🔥 Activar tracking y grabación
-                    val updates = hashMapOf<String, Any>(
-                        "trackingEnabled" to true,
-                        "recordingEnabled" to true,
-                        "takePhoto" to true
-                    )
-
-                    deviceDocRef.update(updates)
-                        .addOnSuccessListener {
-                            Log.d("BackgroundService", "trackingEnabled y recordingEnabled activados correctamente.")
-                        }
-                        .addOnFailureListener { e ->
-                            Log.e("BackgroundService", "Error activando tracking y grabación: ${e.message}")
-                        }
-
-                    // 🔥 Insertar notificación en Firestore
-                    val notificationData = hashMapOf(
-                        "senderName" to deviceName,
-                        "message" to getString(R.string.alert_message, deviceName),
-                        "timestamp" to Timestamp.now()
-                    )
-
-                    firestore.collection("users")
-                        .document(deviceContext.userId)
-                        .collection("notifications")
-                        .add(notificationData)
-                        .addOnSuccessListener {
-                            Log.d("BackgroundService", "Notificación de alerta registrada correctamente.")
-                        }
-                        .addOnFailureListener { e ->
-                            Log.e("BackgroundService", "Error registrando la notificación: ${e.message}")
-                        }
+                    activateAlarmFlags(deviceDocRef)
+                    saveAlarmNotification(deviceContext.userId, deviceName)
                 } else {
                     Log.e("BackgroundService", "Documento del dispositivo no encontrado.")
                 }
             }
             .addOnFailureListener { e ->
                 Log.e("BackgroundService", "Error obteniendo el nombre del dispositivo: ${e.message}")
+            }
+    }
+
+    private fun activateAlarmFlags(deviceDocRef: DocumentReference) {
+        updateTrackingAndRecordingFlags(deviceDocRef, includeTakePhoto = true, logTag = "BackgroundService")
+    }
+
+    private fun updateTrackingAndRecordingFlags(
+        deviceDocRef: DocumentReference,
+        includeTakePhoto: Boolean,
+        logTag: String
+    ) {
+        val updates = hashMapOf<String, Any>(
+            "trackingEnabled" to true,
+            "recordingEnabled" to true
+        )
+        if (includeTakePhoto) {
+            updates["takePhoto"] = true
+        }
+
+        deviceDocRef.update(updates)
+            .addOnSuccessListener {
+                Log.d(logTag, "trackingEnabled y recordingEnabled actualizados correctamente.")
+            }
+            .addOnFailureListener { e ->
+                Log.e(logTag, "Error actualizando tracking y grabación: ${e.message}")
+            }
+    }
+
+    private fun saveAlarmNotification(userId: String, deviceName: String) {
+        val notificationData = hashMapOf(
+            "senderName" to deviceName,
+            "message" to getString(R.string.alert_message, deviceName),
+            "timestamp" to Timestamp.now()
+        )
+
+        firestore.collection("users")
+            .document(userId)
+            .collection("notifications")
+            .add(notificationData)
+            .addOnSuccessListener {
+                Log.d("BackgroundService", "Notificación de alerta registrada correctamente.")
+            }
+            .addOnFailureListener { e ->
+                Log.e("BackgroundService", "Error registrando la notificación: ${e.message}")
             }
     }
 
@@ -2163,18 +2172,11 @@ class BackgroundService : Service() {
             // Actualiza en Firestore los campos trackingEnabled y recordingEnabled a true
             val deviceContext = getCurrentDeviceContext() ?: return
             val deviceDocRef = getDeviceDocRef(deviceContext)
-            // Define el mapa de actualizaciones con el tipo MutableMap<String, Any>
-            val updates: MutableMap<String, Any> = mutableMapOf(
-                "trackingEnabled" to true,
-                "recordingEnabled" to true
+            updateTrackingAndRecordingFlags(
+                deviceDocRef = deviceDocRef,
+                includeTakePhoto = false,
+                logTag = "ManualActivation"
             )
-            deviceDocRef.update(updates)
-                .addOnSuccessListener {
-                    Log.d("ManualActivation", "Campos trackingEnabled y recordingEnabled actualizados")
-                }
-                .addOnFailureListener { e ->
-                    Log.e("ManualActivation", "Error actualizando campos: ${e.message}")
-                }
             // Llama a triggerAlarm() para activar la alarma
             triggerAlarm()
         }
