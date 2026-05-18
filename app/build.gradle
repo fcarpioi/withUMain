@@ -15,7 +15,7 @@ android {
     namespace 'com.controlparental.jerico'
     compileSdk  36
     defaultConfig {
-        applicationId "com.controlparental.jerico"
+        applicationId "com.withu.app"
         minSdk 29
         targetSdk 35
         versionCode 1

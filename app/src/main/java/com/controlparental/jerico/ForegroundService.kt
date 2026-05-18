@@ -15,10 +15,13 @@ import android.location.Location
 import com.google.android.gms.location.*
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FirebaseFirestore
+import com.google.firebase.firestore.GeoPoint
 import com.google.firebase.firestore.ListenerRegistration
+import com.google.firebase.firestore.SetOptions
 import android.util.Log
 import androidx.core.content.ContextCompat
 import android.Manifest
+import java.util.Date
 
 class ForegroundService : Service() {
     private lateinit var fusedLocationClient: FusedLocationProviderClient
@@ -60,13 +63,22 @@ class ForegroundService : Service() {
     private fun sendLocationData(location: Location) {
         val user = auth.currentUser
         user?.let {
+            val deviceId = getStoredDeviceId() ?: run {
+                Log.e("ForegroundService", "DeviceId no disponible; no se puede guardar ubicacion")
+                return
+            }
+            val geoPoint = GeoPoint(location.latitude, location.longitude)
+            val timestamp = Date()
             val locationData = hashMapOf(
-                "user_id" to user.uid,
-                "latitude" to location.latitude,
-                "longitude" to location.longitude,
-                "timestamp" to System.currentTimeMillis()
+                "location" to geoPoint,
+                "timestamp" to timestamp
             )
-            firestore.collection("locations")
+            val deviceDocRef = firestore.collection("users")
+                .document(user.uid)
+                .collection("devices")
+                .document(deviceId)
+
+            deviceDocRef.collection("locations")
                 .add(locationData)
                 .addOnSuccessListener {
                     Log.d("ForegroundService", "Ubicación enviada con éxito a Firestore")
@@ -74,6 +86,16 @@ class ForegroundService : Service() {
                 .addOnFailureListener {
                     Log.e("ForegroundService", "Error al enviar la ubicación a Firestore", it)
                 }
+
+            deviceDocRef.set(
+                hashMapOf(
+                    "lastCoordinate" to geoPoint,
+                    "lastTimeStamp" to timestamp
+                ),
+                SetOptions.merge()
+            ).addOnFailureListener {
+                Log.e("ForegroundService", "Error al actualizar ultimo punto", it)
+            }
         }
     }
 
@@ -93,8 +115,10 @@ class ForegroundService : Service() {
 
     private fun listenForLocationUpdateChanges() {
         val userId = auth.currentUser?.uid ?: return
+        val deviceId = getStoredDeviceId() ?: return
 
         firestoreListener = firestore.collection("users").document(userId)
+            .collection("devices").document(deviceId)
             .addSnapshotListener { documentSnapshot, error ->
                 if (error != null) {
                     Log.e("ForegroundService", "Error al escuchar cambios en Firestore", error)
@@ -114,19 +138,21 @@ class ForegroundService : Service() {
                         stopLocationUpdates()
                     }
                 } else {
-                    createDefaultUserDocument(userId)
+                    createDefaultDeviceDocument(userId, deviceId)
                 }
             }
     }
 
-    private fun createDefaultUserDocument(userId: String) {
+    private fun createDefaultDeviceDocument(userId: String, deviceId: String) {
         val defaultData = hashMapOf(
             "locationUpdateInterval" to 15000L, // 15 segundos en milisegundos
             "trackingEnabled" to true,
             "recordingEnabled" to true
         )
 
-        firestore.collection("users").document(userId).set(defaultData)
+        firestore.collection("users").document(userId)
+            .collection("devices").document(deviceId)
+            .set(defaultData, SetOptions.merge())
             .addOnSuccessListener {
                 Log.d("ForegroundService", "Documento creado con valores predeterminados")
             }
@@ -160,6 +186,11 @@ class ForegroundService : Service() {
     private fun stopLocationUpdates() {
         fusedLocationClient.removeLocationUpdates(locationCallback)
         Log.d("ForegroundService", "Actualizaciones de ubicación detenidas")
+    }
+
+    private fun getStoredDeviceId(): String? {
+        return getSharedPreferences("UserPrefs", Context.MODE_PRIVATE)
+            .getString("idDevice", null)
     }
 
     private fun createNotification(): Notification {

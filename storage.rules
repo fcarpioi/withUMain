@@ -1,0 +1,56 @@
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    function hasImageContentType() {
+      return request.resource.contentType.matches('image/.*');
+    }
+
+    function hasSafeImageExtension(fileName) {
+      return fileName.matches('(?i).+\\.(jpg|jpeg|png|webp)$');
+    }
+
+    function isImageUpload(fileName) {
+      // Algunos flujos usan putBytes(...) sin metadata; en esos casos
+      // validamos por extension ademas del contentType cuando existe.
+      return hasImageContentType() || hasSafeImageExtension(fileName);
+    }
+
+    // Capturas de pantalla: screenshots/{uid}/{file}
+    match /screenshots/{userId}/{fileName} {
+      allow read, delete: if isOwner(userId);
+      allow create, update: if isOwner(userId)
+        && request.resource.size < 20 * 1024 * 1024
+        && isImageUpload(fileName);
+    }
+
+    // Fotos: photos/{uid}/{file}
+    match /photos/{userId}/{fileName} {
+      allow read, delete: if isOwner(userId);
+      allow create, update: if isOwner(userId)
+        && request.resource.size < 20 * 1024 * 1024
+        && isImageUpload(fileName);
+    }
+
+    // Grabaciones: recordings/{uid}/{deviceId}/{file}
+    match /recordings/{userId}/{deviceId}/{fileName} {
+      allow read, delete: if isOwner(userId);
+      allow create, update: if isOwner(userId)
+        && request.resource.size < 150 * 1024 * 1024
+        && request.resource.contentType.matches('audio/.*|video/.*|application/octet-stream');
+    }
+
+    // Denegar todo lo demás.
+    match /{allPaths=**} {
+      allow read, write: if false;
+    }
+  }
+}

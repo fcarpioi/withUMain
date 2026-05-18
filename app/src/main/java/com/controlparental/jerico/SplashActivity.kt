@@ -3,18 +3,18 @@ package com.controlparental.jerico
 import android.annotation.SuppressLint
 import android.content.Intent
 import android.os.Bundle
-import androidx.appcompat.app.AppCompatActivity
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import kotlinx.coroutines.MainScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import android.animation.ObjectAnimator
+import android.app.Activity
 import android.view.animation.LinearInterpolator
 import android.widget.ImageView
 
 @SuppressLint("CustomSplashScreen")
-class SplashActivity : AppCompatActivity() {
+class SplashActivity : Activity() {
     private val mainScope = MainScope()
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -27,9 +27,6 @@ class SplashActivity : AppCompatActivity() {
         swing.repeatMode = ObjectAnimator.REVERSE
         swing.interpolator = LinearInterpolator()
         swing.start()
-        // Esconder la Action Bar
-        supportActionBar?.hide()
-
         // Hacer que la actividad esté en modo inmersivo
         hideSystemUI()
 

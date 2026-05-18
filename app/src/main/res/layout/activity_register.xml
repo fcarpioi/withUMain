@@ -218,18 +218,6 @@
                         android:lineSpacingExtra="2dp" />
                 </LinearLayout>
 
-                <!-- Botón de debug temporal -->
-                <Button
-                    android:id="@+id/debugButton"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:text="@string/debug_qr"
-                    android:layout_gravity="center"
-                    android:layout_marginTop="16dp"
-                    android:background="@drawable/modern_button_background"
-                    android:textColor="@android:color/white"
-                    android:visibility="visible" />
-
             </LinearLayout>
 
         </LinearLayout>

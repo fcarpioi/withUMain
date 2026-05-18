@@ -1,0 +1,140 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:fillViewport="true">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:padding="28dp"
+        android:background="@drawable/modern_card_background"
+        android:minWidth="320dp"
+        android:elevation="16dp">
+
+        <ImageView
+            android:layout_width="52dp"
+            android:layout_height="52dp"
+            android:layout_gravity="center_horizontal"
+            android:layout_marginBottom="18dp"
+            android:contentDescription="@null"
+            android:src="@android:drawable/ic_dialog_info"
+            app:tint="@color/modernOrange" />
+
+        <TextView
+            android:id="@+id/guidanceTitle"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:gravity="center"
+            android:text="Configuración necesaria"
+            android:textColor="@color/modernTextPrimary"
+            android:textSize="22sp"
+            android:textStyle="bold" />
+
+        <TextView
+            android:id="@+id/guidanceSubtitle"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="10dp"
+            android:gravity="center"
+            android:lineSpacingExtra="4dp"
+            android:text="Faltan dos permisos para que la app siga funcionando con seguridad después del registro."
+            android:textColor="@color/modernTextSecondary"
+            android:textSize="14sp" />
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="1dp"
+            android:layout_marginTop="22dp"
+            android:layout_marginBottom="18dp"
+            android:background="@color/modernGrayLight" />
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_gravity="center_horizontal"
+            android:background="@drawable/modern_button_background"
+            android:paddingStart="12dp"
+            android:paddingTop="6dp"
+            android:paddingEnd="12dp"
+            android:paddingBottom="6dp"
+            android:text="Sigue estos pasos"
+            android:textColor="@color/modernBackgroundSecondary"
+            android:textSize="12sp"
+            android:textStyle="bold" />
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="18dp"
+            android:text="1. En la siguiente pantalla entra en Permisos y en Ubicación selecciona “Permitir todo el tiempo”."
+            android:textColor="@color/modernTextPrimary"
+            android:textSize="15sp"
+            android:lineSpacingExtra="5dp" />
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="14dp"
+            android:text="2. Vuelve a la app y escanea otra vez el código. Por seguridad es normal que te vuelva a pedir la clave."
+            android:textColor="@color/modernTextPrimary"
+            android:textSize="15sp"
+            android:lineSpacingExtra="5dp" />
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="14dp"
+            android:text="3. Después la app abrirá Acceso al uso. Ahí también debes pulsar Permitir."
+            android:textColor="@color/modernTextPrimary"
+            android:textSize="15sp"
+            android:lineSpacingExtra="5dp" />
+
+        <TextView
+            android:id="@+id/guidanceCallout"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="20dp"
+            android:background="@drawable/modern_input_background"
+            android:padding="16dp"
+            android:text="Importante\nEscanear el código otra vez y volver a introducir la clave es parte normal de la verificación de seguridad."
+            android:textColor="@color/modernOrangeDark"
+            android:textSize="14sp"
+            android:lineSpacingExtra="4dp"
+            android:textStyle="bold" />
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="24dp"
+            android:gravity="center"
+            android:orientation="horizontal">
+
+            <Button
+                android:id="@+id/guidanceCancelButton"
+                android:layout_width="0dp"
+                android:layout_height="48dp"
+                android:layout_weight="1"
+                android:layout_marginEnd="8dp"
+                android:background="@drawable/modern_input_background"
+                android:text="Ahora no"
+                android:textAllCaps="false"
+                android:textColor="@color/modernTextSecondary"
+                android:textStyle="bold" />
+
+            <Button
+                android:id="@+id/guidanceConfirmButton"
+                android:layout_width="0dp"
+                android:layout_height="48dp"
+                android:layout_weight="1"
+                android:layout_marginStart="8dp"
+                android:background="@drawable/modern_button_background"
+                android:text="Abrir ajustes"
+                android:textAllCaps="false"
+                android:textColor="@color/modernBackgroundSecondary"
+                android:textStyle="bold" />
+        </LinearLayout>
+    </LinearLayout>
+</ScrollView>

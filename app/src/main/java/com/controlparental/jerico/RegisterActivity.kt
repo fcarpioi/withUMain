@@ -5,6 +5,7 @@ import android.annotation.SuppressLint
 import android.app.Dialog
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.os.Handler
@@ -32,6 +33,7 @@ import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.GeoPoint
 import com.google.firebase.firestore.SetOptions
+import com.google.mlkit.vision.barcode.BarcodeScanner
 import com.google.mlkit.vision.barcode.common.Barcode
 import com.google.mlkit.vision.barcode.BarcodeScannerOptions
 import com.google.mlkit.vision.barcode.BarcodeScanning
@@ -53,13 +55,17 @@ class RegisterActivity : AppCompatActivity() {
     private lateinit var previewView: PreviewView
     private lateinit var cameraExecutor: ExecutorService
     private lateinit var sharedPreferences: SharedPreferences
+    private lateinit var barcodeScanner: BarcodeScanner
     private var qrDeviceId: String? = null
     private var isProcessing = false
+    private var isCameraStarted = false
     private val TAG = "RegisterActivity"
+    private val servicePermissionsRequestCode = 102
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_register)
+        Log.d("WithUBoot", "Boot diagnostics snapshot: ${BootDiagnostics.snapshot(this)}")
 
         auth = FirebaseAuth.getInstance()
         firestore = FirebaseFirestore.getInstance()
@@ -72,12 +78,16 @@ class RegisterActivity : AppCompatActivity() {
             qrDeviceId = savedDeviceId
             DeviceIdHolder.deviceId = qrDeviceId
 
-            // Iniciar servicio y cerrar la actividad inmediatamente
-            startBackgroundService()
-
-            // Cerrar la actividad inmediatamente sin mostrar mensaje
-            finish()
-            return
+            // Cerrar solo si el servicio realmente arrancó.
+            if (startBackgroundService()) {
+                handleSuccessfulServiceStart()
+                return
+            }
+            Toast.makeText(
+                this,
+                "Faltan permisos para iniciar el servicio en segundo plano",
+                Toast.LENGTH_LONG
+            ).show()
         }
 
         val logoImageView: ImageView = findViewById(R.id.roundedImageView)
@@ -109,12 +119,11 @@ class RegisterActivity : AppCompatActivity() {
         scanningDot.startAnimation(pulseAnimation)
 
         cameraExecutor = Executors.newSingleThreadExecutor()
-
-        // Configurar botón de debug
-        val debugButton = findViewById<Button>(R.id.debugButton)
-        debugButton.setOnClickListener {
-            showDebugDialog()
-        }
+        barcodeScanner = BarcodeScanning.getClient(
+            BarcodeScannerOptions.Builder()
+                .setBarcodeFormats(Barcode.FORMAT_QR_CODE)
+                .build()
+        )
 
         if (allPermissionsGranted()) {
             startCamera()
@@ -135,7 +144,9 @@ class RegisterActivity : AppCompatActivity() {
                 it.setSurfaceProvider(previewView.surfaceProvider)
             }
 
-            val imageAnalysis = ImageAnalysis.Builder().build().also { analysis ->
+            val imageAnalysis = ImageAnalysis.Builder()
+                .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
+                .build().also { analysis ->
                 analysis.setAnalyzer(cameraExecutor) { imageProxy ->
                     processImageProxy(imageProxy)
                 }
@@ -146,26 +157,27 @@ class RegisterActivity : AppCompatActivity() {
             try {
                 cameraProvider.unbindAll()
                 cameraProvider.bindToLifecycle(this, cameraSelector, preview, imageAnalysis)
+                isCameraStarted = true
             } catch (e: Exception) {
                 Log.e(TAG, "Error al iniciar la cámara: ${e.message}")
+                isCameraStarted = false
             }
         }, ContextCompat.getMainExecutor(this))
     }
 
     private fun processImageProxy(imageProxy: ImageProxy) {
-        val nv21 = imageProxyToNV21(imageProxy)
-        val inputImage = InputImage.fromByteArray(
-            nv21,
-            imageProxy.width,
-            imageProxy.height,
-            imageProxy.imageInfo.rotationDegrees,
-            InputImage.IMAGE_FORMAT_NV21
+        val mediaImage = imageProxy.image
+        if (mediaImage == null) {
+            imageProxy.close()
+            return
+        }
+
+        val inputImage = InputImage.fromMediaImage(
+            mediaImage,
+            imageProxy.imageInfo.rotationDegrees
         )
-        val options = BarcodeScannerOptions.Builder()
-            .setBarcodeFormats(Barcode.FORMAT_QR_CODE)
-            .build()
-        val scanner = BarcodeScanning.getClient(options)
-        scanner.process(inputImage)
+
+        barcodeScanner.process(inputImage)
             .addOnSuccessListener { barcodes ->
                 for (barcode in barcodes) {
                     val rawValue = barcode.rawValue
@@ -182,32 +194,6 @@ class RegisterActivity : AppCompatActivity() {
             .addOnCompleteListener {
                 imageProxy.close()
             }
-    }
-
-    private fun imageProxyToNV21(imageProxy: ImageProxy): ByteArray {
-        val yBuffer = imageProxy.planes[0].buffer
-        val uBuffer = imageProxy.planes[1].buffer
-        val vBuffer = imageProxy.planes[2].buffer
-
-        val ySize = yBuffer.remaining()
-        val uSize = uBuffer.remaining()
-        val vSize = vBuffer.remaining()
-
-        val nv21 = ByteArray(ySize + uSize + vSize)
-        yBuffer.get(nv21, 0, ySize)
-
-        val uBytes = ByteArray(uSize)
-        uBuffer.get(uBytes)
-        val vBytes = ByteArray(vSize)
-        vBuffer.get(vBytes)
-
-        var offset = ySize
-        val length = minOf(uBytes.size, vBytes.size)
-        for (i in 0 until length) {
-            nv21[offset++] = vBytes[i]
-            nv21[offset++] = uBytes[i]
-        }
-        return nv21
     }
 
     @SuppressLint("HardwareIds")
@@ -349,14 +335,9 @@ class RegisterActivity : AppCompatActivity() {
                     onFailure("Dispositivo no permitido para esta cuenta")
                 }
             } else {
-                deviceDocRef.set(mapOf("createdAt" to System.currentTimeMillis()))
-                    .addOnSuccessListener {
-                        sharedPreferences.edit { putString("idDevice", scannedDeviceId) }
-                        onSuccess()
-                    }
-                    .addOnFailureListener { e ->
-                        onFailure("Error registrando el dispositivo: ${e.message}")
-                    }
+                // No pre-crear documento parcial: registerDeviceInFirestore() debe crearlo completo.
+                sharedPreferences.edit { putString("idDevice", scannedDeviceId) }
+                onSuccess()
             }
         }.addOnFailureListener { e ->
             onFailure("Error verificando el dispositivo: ${e.message}")
@@ -383,14 +364,14 @@ class RegisterActivity : AppCompatActivity() {
                     // ✅ Si el ID del documento coincide con el campo deviceId, continúa sin más validaciones
                     if (documentDeviceId == qrDeviceId) {
                         Log.d("QRCodeDebug", "✅ ID del documento coincide con deviceId en Firestore")
-                        updateDeviceData(deviceRef, localDeviceId)
+                        updateDeviceData(deviceRef, localDeviceId, document)
                     } else if (storedLocalDeviceId != null && storedLocalDeviceId != localDeviceId) {
                         runOnUiThread {
                             Toast.makeText(this, "El código QR no corresponde a este dispositivo", Toast.LENGTH_SHORT).show()
                         }
                         isProcessing = false
                     } else {
-                        updateDeviceData(deviceRef, localDeviceId)
+                        updateDeviceData(deviceRef, localDeviceId, document)
                     }
                 } else {
                     createDeviceData(deviceRef, localDeviceId)
@@ -406,9 +387,15 @@ class RegisterActivity : AppCompatActivity() {
         }
     }
 
-    private fun updateDeviceData(deviceRef: com.google.firebase.firestore.DocumentReference, localDeviceId: String) {
+    private fun updateDeviceData(
+        deviceRef: com.google.firebase.firestore.DocumentReference,
+        localDeviceId: String,
+        existingDocument: com.google.firebase.firestore.DocumentSnapshot
+    ) {
         val calendar = Calendar.getInstance()
         val today = calendar.time
+        calendar.add(Calendar.HOUR_OF_DAY, 48)
+        val twoDaysLater = calendar.time
         val deviceData = hashMapOf(
             "deviceName" to Build.MODEL,
             "lastCoordinate" to GeoPoint(8.983333, -79.516667),
@@ -423,17 +410,40 @@ class RegisterActivity : AppCompatActivity() {
             "linkedAt" to today,
         )
 
+        if (!existingDocument.contains("deviceId")) {
+            deviceData["deviceId"] = qrDeviceId
+        }
+        if (!existingDocument.contains("from")) {
+            deviceData["from"] = today
+        }
+        if (!existingDocument.contains("to")) {
+            deviceData["to"] = twoDaysLater
+        }
+        if (!existingDocument.contains("trackApps")) {
+            deviceData["trackApps"] = false
+        }
+        if (!existingDocument.contains("takePicture")) {
+            deviceData["takePicture"] = false
+        }
+        if (!existingDocument.contains("requestUsagePermission")) {
+            deviceData["requestUsagePermission"] = false
+        }
+
         deviceRef.set(deviceData, SetOptions.merge()).addOnSuccessListener {
-            // Iniciar el servicio de fondo
-            startBackgroundService()
-
-            // Mostrar mensaje de confirmación
-            Toast.makeText(this, "Dispositivo vinculado correctamente", Toast.LENGTH_SHORT).show()
-
-            // Cerrar la actividad completamente después de un breve delay
-            Handler(Looper.getMainLooper()).postDelayed({
-                finish()
-            }, 1500) // Esperar 1.5 segundos para que se vea el mensaje
+            val serviceStarted = startBackgroundService()
+            if (serviceStarted) {
+                Toast.makeText(this, "Dispositivo vinculado correctamente", Toast.LENGTH_SHORT).show()
+                Handler(Looper.getMainLooper()).postDelayed({
+                    finish()
+                }, 1500)
+            } else {
+                Toast.makeText(
+                    this,
+                    "Faltan permisos para iniciar el servicio en segundo plano",
+                    Toast.LENGTH_LONG
+                ).show()
+                isProcessing = false
+            }
         }.addOnFailureListener { e ->
             runOnUiThread {
                 Toast.makeText(this, "Error al actualizar el dispositivo: ${e.message}", Toast.LENGTH_SHORT).show()
@@ -445,7 +455,7 @@ class RegisterActivity : AppCompatActivity() {
     private fun createDeviceData(deviceRef: com.google.firebase.firestore.DocumentReference, localDeviceId: String) {
         val calendar = Calendar.getInstance()
         val today = calendar.time
-        calendar.add(Calendar.HOUR, 48)
+        calendar.add(Calendar.HOUR_OF_DAY, 48)
         val twoDaysLater = calendar.time
 
         val deviceData = hashMapOf(
@@ -469,16 +479,20 @@ class RegisterActivity : AppCompatActivity() {
         )
 
         deviceRef.set(deviceData).addOnSuccessListener {
-            // Iniciar el servicio de fondo
-            startBackgroundService()
-
-            // Mostrar mensaje de confirmación
-            Toast.makeText(this, "Dispositivo vinculado correctamente", Toast.LENGTH_SHORT).show()
-
-            // Cerrar la actividad completamente después de un breve delay
-            Handler(Looper.getMainLooper()).postDelayed({
-                finish()
-            }, 1500) // Esperar 1.5 segundos para que se vea el mensaje
+            val serviceStarted = startBackgroundService()
+            if (serviceStarted) {
+                Toast.makeText(this, "Dispositivo vinculado correctamente", Toast.LENGTH_SHORT).show()
+                Handler(Looper.getMainLooper()).postDelayed({
+                    finish()
+                }, 1500)
+            } else {
+                Toast.makeText(
+                    this,
+                    "Faltan permisos para iniciar el servicio en segundo plano",
+                    Toast.LENGTH_LONG
+                ).show()
+                isProcessing = false
+            }
         }.addOnFailureListener { e ->
             runOnUiThread {
                 Toast.makeText(this, "Error al crear el dispositivo: ${e.message}", Toast.LENGTH_SHORT).show()
@@ -497,10 +511,14 @@ class RegisterActivity : AppCompatActivity() {
     override fun onResume() {
         super.onResume()
         enableFullScreenMode()
+        if (allPermissionsGranted() && !isCameraStarted) {
+            startCamera()
+        }
     }
 
     override fun onDestroy() {
         super.onDestroy()
+        barcodeScanner.close()
         cameraExecutor.shutdown()
     }
 
@@ -524,8 +542,23 @@ class RegisterActivity : AppCompatActivity() {
         requestCode: Int, permissions: Array<out String>, grantResults: IntArray
     ) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)
-        if (requestCode == 101 && allPermissionsGranted()) {
-            startCamera()
+        if (requestCode == 101) {
+            if (allPermissionsGranted()) {
+                startCamera()
+            } else {
+                Toast.makeText(this, "Permiso de cámara denegado", Toast.LENGTH_LONG).show()
+            }
+            return
+        }
+
+        if (requestCode == servicePermissionsRequestCode) {
+            val allGranted = grantResults.isNotEmpty() && grantResults.all { it == PackageManager.PERMISSION_GRANTED }
+            if (allGranted) {
+                ensureBackgroundLocationAndStartService()
+            } else {
+                Toast.makeText(this, "Faltan permisos. Abre Ajustes para habilitarlos.", Toast.LENGTH_LONG).show()
+                openAppSettings()
+            }
         }
     }
 
@@ -550,6 +583,10 @@ class RegisterActivity : AppCompatActivity() {
 
         title.text = getString(R.string.password_dialog_title)
         message.text = getString(R.string.password_dialog_message_for_email, email)
+        acceptButton.text = getString(R.string.button_accept)
+        cancelButton.text = getString(R.string.button_cancel)
+        acceptButton.setTextColor(ContextCompat.getColor(this, R.color.modernBackgroundSecondary))
+        cancelButton.setTextColor(ContextCompat.getColor(this, R.color.modernTextSecondary))
 
         acceptButton.setOnClickListener {
             val password = input.text.toString()
@@ -570,57 +607,187 @@ class RegisterActivity : AppCompatActivity() {
         dialog.show()
     }
 
-    private fun showDebugDialog() {
-        val dialog = Dialog(this)
-        dialog.setContentView(R.layout.dialog_password_input)
-        dialog.setCancelable(true)
+    private fun startBackgroundService(): Boolean {
+        try {
+            val hasLocationPermission = ContextCompat.checkSelfPermission(
+                this,
+                Manifest.permission.ACCESS_FINE_LOCATION
+            ) == PackageManager.PERMISSION_GRANTED
+            val hasAudioPermission = ContextCompat.checkSelfPermission(
+                this,
+                Manifest.permission.RECORD_AUDIO
+            ) == PackageManager.PERMISSION_GRANTED
 
-        // Configurar el tamaño del diálogo
-        val window = dialog.window
-        window?.setLayout(
-            (resources.displayMetrics.widthPixels * 0.9).toInt(), // 90% del ancho de pantalla
-            android.view.ViewGroup.LayoutParams.WRAP_CONTENT
-        )
-        window?.setBackgroundDrawableResource(android.R.color.transparent)
-
-        val title = dialog.findViewById<TextView>(R.id.dialogTitle)
-        val message = dialog.findViewById<TextView>(R.id.dialogMessage)
-        val input = dialog.findViewById<EditText>(R.id.passwordInput)
-        val acceptButton = dialog.findViewById<Button>(R.id.acceptButton)
-        val cancelButton = dialog.findViewById<Button>(R.id.cancelButton)
-
-        title.text = getString(R.string.debug_qr)
-        message.text = getString(R.string.debug_qr_prompt)
-        input.hint = getString(R.string.debug_qr_hint)
-        input.inputType = android.text.InputType.TYPE_CLASS_TEXT or android.text.InputType.TYPE_TEXT_FLAG_MULTI_LINE
-
-        acceptButton.text = getString(R.string.button_test)
-        acceptButton.setOnClickListener {
-            val qrContent = input.text.toString()
-            if (qrContent.isNotBlank()) {
-                Log.d("QRCodeDebug", "🧪 Probando QR manualmente: $qrContent")
-                isProcessing = false // Reset processing flag
-                processQRCode(qrContent)
-                dialog.dismiss()
-            } else {
-                Toast.makeText(this, getString(R.string.debug_qr_empty_error), Toast.LENGTH_SHORT).show()
+            if (!hasLocationPermission || !hasAudioPermission) {
+                Log.w(
+                    "RegisterActivity",
+                    "BackgroundService no iniciado: faltan permisos de ubicación o audio"
+                )
+                requestServicePermissionsIfNeeded()
+                return false
             }
+
+            val serviceIntent = Intent(this, BackgroundService::class.java)
+            startForegroundService(serviceIntent)
+            Log.d("RegisterActivity", "✅ BackgroundService iniciado correctamente")
+            return true
+        } catch (e: Exception) {
+            Log.e("RegisterActivity", "❌ Error iniciando BackgroundService: ${e.message}")
+            return false
+        }
+    }
+
+    private fun requestServicePermissionsIfNeeded() {
+        val permissionsToRequest = mutableListOf<String>()
+
+        if (ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
+            permissionsToRequest += Manifest.permission.ACCESS_FINE_LOCATION
+        }
+        if (ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
+            permissionsToRequest += Manifest.permission.RECORD_AUDIO
+        }
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+            ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
+            permissionsToRequest += Manifest.permission.POST_NOTIFICATIONS
         }
 
-        cancelButton.setOnClickListener {
+        if (permissionsToRequest.isNotEmpty()) {
+            ActivityCompat.requestPermissions(
+                this,
+                permissionsToRequest.toTypedArray(),
+                servicePermissionsRequestCode
+            )
+            return
+        }
+
+        ensureBackgroundLocationAndStartService()
+    }
+
+    private fun ensureBackgroundLocationAndStartService() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q &&
+            ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_BACKGROUND_LOCATION) != PackageManager.PERMISSION_GRANTED
+        ) {
+            showBackgroundLocationHelpDialog()
+            return
+        }
+
+        if (startBackgroundService()) {
+            Toast.makeText(this, "Servicio en segundo plano iniciado", Toast.LENGTH_SHORT).show()
+            handleSuccessfulServiceStart()
+        }
+    }
+
+    private fun openAppSettings() {
+        val intent = Intent(
+            Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+            Uri.fromParts("package", packageName, null)
+        )
+        startActivity(intent)
+    }
+
+    private fun openBackgroundLocationPermissionSettings() {
+        val directPermissionIntent = Intent("android.settings.APP_PERMISSION_SETTINGS").apply {
+            putExtra("android.provider.extra.APP_PACKAGE", packageName)
+            putExtra("android.provider.extra.PERMISSION_NAME", Manifest.permission.ACCESS_BACKGROUND_LOCATION)
+        }
+        if (directPermissionIntent.resolveActivity(packageManager) != null) {
+            startActivity(directPermissionIntent)
+            return
+        }
+        openAppSettings()
+    }
+
+    private fun showBackgroundLocationHelpDialog() {
+        val dialog = Dialog(this)
+        dialog.setContentView(R.layout.dialog_setup_guidance)
+        dialog.setCancelable(false)
+
+        dialog.window?.setLayout(
+            (resources.displayMetrics.widthPixels * 0.88).toInt(),
+            android.view.ViewGroup.LayoutParams.WRAP_CONTENT
+        )
+        dialog.window?.setBackgroundDrawableResource(android.R.color.transparent)
+
+        dialog.findViewById<Button>(R.id.guidanceConfirmButton).setOnClickListener {
+            dialog.dismiss()
+            openBackgroundLocationPermissionSettings()
+        }
+        dialog.findViewById<Button>(R.id.guidanceCancelButton).setOnClickListener {
             dialog.dismiss()
         }
 
         dialog.show()
     }
 
-    private fun startBackgroundService() {
-        try {
-            val serviceIntent = Intent(this, BackgroundService::class.java)
-            startForegroundService(serviceIntent)
-            Log.d("RegisterActivity", "✅ BackgroundService iniciado correctamente")
-        } catch (e: Exception) {
-            Log.e("RegisterActivity", "❌ Error iniciando BackgroundService: ${e.message}")
+    private fun handleSuccessfulServiceStart() {
+        Handler(Looper.getMainLooper()).postDelayed({
+            if (wasServiceHeartbeatSeenRecently()) {
+                moveTaskToBack(true)
+                finish()
+            } else {
+                showBackgroundExecutionHelpDialog()
+            }
+        }, 2000L)
+    }
+
+    private fun wasServiceHeartbeatSeenRecently(): Boolean {
+        val prefs = getSharedPreferences("ServiceStatePrefs", Context.MODE_PRIVATE)
+        val lastHeartbeat = prefs.getLong("last_service_heartbeat", 0L)
+        val isRunning = prefs.getBoolean("service_running", false)
+        val elapsed = System.currentTimeMillis() - lastHeartbeat
+        return isRunning && elapsed in 0..15000
+    }
+
+    private fun openBackgroundExecutionSettings() {
+        val candidates = mutableListOf<Intent>()
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+            candidates += Intent("android.settings.APP_BATTERY_SETTINGS").apply {
+                putExtra("app_package", packageName)
+                putExtra("android.provider.extra.APP_PACKAGE", packageName)
+                data = Uri.fromParts("package", packageName, null)
+            }
+            candidates += Intent("android.settings.APP_BATTERY_USAGE").apply {
+                data = Uri.fromParts("package", packageName, null)
+            }
         }
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            candidates += Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS)
+            candidates += Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS).apply {
+                data = Uri.parse("package:$packageName")
+            }
+        }
+
+        for (intent in candidates) {
+            if (intent.resolveActivity(packageManager) != null) {
+                startActivity(intent)
+                return
+            }
+        }
+
+        openAppSettings()
+    }
+
+    private fun showBackgroundExecutionHelpDialog() {
+        val message = """
+            Para que la app funcione en segundo plano:
+            
+            1) Entra a "Batería" o "Uso de batería".
+            2) Busca esta app.
+            3) Selecciona "Sin restricciones" / "Permitir en segundo plano".
+            4) Desactiva "Optimización de batería" para esta app.
+            5) Regresa a la app.
+        """.trimIndent()
+
+        androidx.appcompat.app.AlertDialog.Builder(this)
+            .setTitle("Activar ejecución en segundo plano")
+            .setMessage(message)
+            .setCancelable(false)
+            .setPositiveButton("Abrir configuración") { _, _ ->
+                openBackgroundExecutionSettings()
+            }
+            .setNegativeButton("Ahora no", null)
+            .show()
     }
 }

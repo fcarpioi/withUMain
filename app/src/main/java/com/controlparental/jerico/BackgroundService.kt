@@ -13,6 +13,7 @@ import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
 import android.content.pm.PackageManager
+import android.content.pm.ServiceInfo
 import android.graphics.ImageFormat
 import android.hardware.camera2.CameraAccessException
 import android.hardware.camera2.CameraCaptureSession
@@ -23,6 +24,7 @@ import android.hardware.camera2.CaptureRequest
 import android.hardware.camera2.params.OutputConfiguration
 import android.hardware.camera2.params.SessionConfiguration
 import android.media.AudioManager
+import android.media.MediaMetadataRetriever
 import android.media.ImageReader
 import android.media.MediaPlayer
 import android.media.MediaRecorder
@@ -54,6 +56,7 @@ import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.GeoPoint
 import com.google.firebase.firestore.SetOptions
 import com.google.firebase.storage.FirebaseStorage
+import com.google.firebase.storage.StorageMetadata
 import java.io.File
 import java.io.FileOutputStream
 import java.util.Date
@@ -66,9 +69,14 @@ import androidx.core.content.edit
 import okhttp3.*
 import android.app.AppOpsManager
 import android.app.PendingIntent
+import android.app.ActivityManager
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
+import android.graphics.Canvas
+import android.graphics.ColorMatrix
+import android.graphics.ColorMatrixColorFilter
 import android.graphics.Matrix
+import android.graphics.Paint
 import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
 import androidx.work.Data
@@ -85,6 +93,7 @@ import androidx.camera.core.ImageCaptureException
 import androidx.camera.lifecycle.ProcessCameraProvider
 
 import androidx.camera.core.*
+import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.ProcessLifecycleOwner
 
 
@@ -95,6 +104,7 @@ import com.google.firebase.firestore.DocumentSnapshot
 import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.ListenerRegistration
 import java.util.concurrent.ExecutorService
+import java.util.concurrent.atomic.AtomicInteger
 import android.app.usage.UsageStatsManager
 import android.app.usage.UsageStats
 
@@ -131,6 +141,15 @@ class BackgroundService : Service() {
     private var isPausedForAudio: Boolean = false
     private var audioCheckHandler: Handler? = null
     private var audioCheckRunnable: Runnable? = null
+    private var pendingSpeechRestart: Runnable? = null
+    private val keywordListenerEnabled = true
+    private val recordingAudioSource = MediaRecorder.AudioSource.MIC
+    private var lastSpeechStartAtMs: Long = 0L
+    private var currentSpeechRestartDelayMs: Long = 15_000L
+    private var lastKeywordAlarmAtMs: Long = 0L
+    private val minSpeechStartIntervalMs: Long = 12_000L
+    private val maxSpeechRestartDelayMs: Long = 60_000L
+    private val keywordAlarmCooldownMs: Long = 90_000L
 
     // AudioFocusRequest eliminado para evitar pitidos
 
@@ -141,11 +160,16 @@ class BackgroundService : Service() {
     private var isManualActivationReceiverRegistered = false
     private var isBatteryReceiverRegistered = false
     private var isScreenReceiverRegistered = false
+    private val serviceStatePrefs by lazy {
+        getSharedPreferences("ServiceStatePrefs", Context.MODE_PRIVATE)
+    }
 
 
     override fun onCreate() {
         super.onCreate()
+        BootDiagnostics.markServiceCreated(this)
         Log.d("BackgroundService", "Service onCreate called")
+        updateServiceHeartbeat()
         initializeServiceDependencies()
         registerServiceReceivers()
         startListeningForUserPreferences()
@@ -223,7 +247,10 @@ class BackgroundService : Service() {
     }
 
     private fun initializeSpeechRecognitionOnCreate() {
-        initializeSpeechRecognizer()
+        if (!keywordListenerEnabled) {
+            Log.d("BackgroundService", "Keyword listener deshabilitado para pruebas")
+            return
+        }
         if (isScreenOff()) {
             tryStartSpeechRecognizer()
         } else {
@@ -241,7 +268,28 @@ class BackgroundService : Service() {
             this,
             Manifest.permission.RECORD_AUDIO
         ) == PackageManager.PERMISSION_GRANTED
-        return hasAudioPermission && isScreenOff() && !isPausedForAudio && !isRecording
+        val canRun = hasAudioPermission && isScreenOff() && !isPausedForAudio && !isRecording
+        if (!canRun) {
+            logRecognizerState("canRunSpeechRecognitionNow=false")
+        }
+        return canRun
+    }
+
+    private fun logRecognizerState(reason: String) {
+        val hasAudioPermission = ContextCompat.checkSelfPermission(
+            this,
+            Manifest.permission.RECORD_AUDIO
+        ) == PackageManager.PERMISSION_GRANTED
+        val musicActive = audioManager?.isMusicActive ?: false
+        val mode = audioManager?.mode ?: -1
+        val sysVol = audioManager?.getStreamVolume(AudioManager.STREAM_SYSTEM) ?: -1
+        val notiVol = audioManager?.getStreamVolume(AudioManager.STREAM_NOTIFICATION) ?: -1
+        val musicVol = audioManager?.getStreamVolume(AudioManager.STREAM_MUSIC) ?: -1
+        val ringVol = audioManager?.getStreamVolume(AudioManager.STREAM_RING) ?: -1
+        Log.d(
+            "SpeechDiag",
+            "reason=$reason screenOff=${isScreenOff()} hasAudioPerm=$hasAudioPermission isPausedForAudio=$isPausedForAudio isRecording=$isRecording isListening=$isListening musicActive=$musicActive mode=$mode vol(system=$sysVol notification=$notiVol music=$musicVol ring=$ringVol)"
+        )
     }
 
     /*private fun capturarPantalla(userDocRef: DocumentReference) {
@@ -272,9 +320,10 @@ class BackgroundService : Service() {
             outputStream.flush()
             outputStream.close()
 
+            val userId = auth.currentUser?.uid ?: return
             val fileUri = Uri.fromFile(screenshotFile)
             val storageRef = FirebaseStorage.getInstance().reference
-                .child("screenshots/${screenshotFile.name}")
+                .child("screenshots/$userId/${screenshotFile.name}")
 
             storageRef.putFile(fileUri)
                 .addOnSuccessListener {
@@ -369,17 +418,38 @@ class BackgroundService : Service() {
     companion object {
         private const val NOTIFICATION_ID = 1
         const val ACTION_TRIGGER_ALARM = "com.controlparental.jerico.ACTION_TRIGGER_ALARM"
+        const val EXTRA_START_REASON = "com.controlparental.jerico.extra.START_REASON"
+        const val START_REASON_BOOT = "boot"
+        const val START_REASON_WORKER = "worker"
+        const val START_REASON_APP = "app"
     }
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         Log.d("BackgroundService", "Service onStartCommand called")
-        val notification = createNotification()
-        startForeground(NOTIFICATION_ID, notification)
-
-        // 🔍 Verificación de permisos
-        if (ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED ||
-            ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
+        updateServiceHeartbeat()
+        val startReason = intent?.getStringExtra(EXTRA_START_REASON) ?: START_REASON_APP
+        BootDiagnostics.markServiceStarted(this, startReason)
+        if (!checkPermissions()) {
+            Log.w("BackgroundService", "Required permissions not granted; stopping service start")
+            BootDiagnostics.markServiceStopped(this, "missing_permissions")
             stopSelf()
-            Toast.makeText(this, "Required permissions not granted", Toast.LENGTH_LONG).show()
+            return START_NOT_STICKY
+        }
+
+        val notification = createNotification()
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                val foregroundTypes = resolveForegroundServiceTypes(startReason)
+                startForeground(NOTIFICATION_ID, notification, foregroundTypes)
+                BootDiagnostics.markServiceForegroundStarted(this, foregroundTypes)
+            } else {
+                startForeground(NOTIFICATION_ID, notification)
+                BootDiagnostics.markServiceForegroundStarted(this, 0)
+            }
+        } catch (securityException: SecurityException) {
+            BootDiagnostics.markServiceStartError(this, "BackgroundService.startForeground", securityException)
+            BootDiagnostics.markServiceStopped(this, "foreground_security_exception")
+            Log.e("BackgroundService", "Unable to start foreground service", securityException)
+            stopSelf()
             return START_NOT_STICKY
         }
 
@@ -393,12 +463,52 @@ class BackgroundService : Service() {
         return START_STICKY
     }
 
+    private fun resolveForegroundServiceTypes(startReason: String): Int {
+        var foregroundTypes = ServiceInfo.FOREGROUND_SERVICE_TYPE_LOCATION
+        val appIsVisible = ProcessLifecycleOwner.get()
+            .lifecycle
+            .currentState
+            .isAtLeast(Lifecycle.State.STARTED)
+
+        if (!appIsVisible) {
+            Log.d(
+                "BackgroundService",
+                "Foreground start in background ($startReason); using location-only type"
+            )
+            return foregroundTypes
+        }
+
+        val hasCameraPermission = ContextCompat.checkSelfPermission(
+            this,
+            Manifest.permission.CAMERA
+        ) == PackageManager.PERMISSION_GRANTED
+        val hasRecordAudioPermission = ContextCompat.checkSelfPermission(
+            this,
+            Manifest.permission.RECORD_AUDIO
+        ) == PackageManager.PERMISSION_GRANTED
+
+        if (hasCameraPermission) {
+            foregroundTypes = foregroundTypes or ServiceInfo.FOREGROUND_SERVICE_TYPE_CAMERA
+        }
+        if (hasRecordAudioPermission && Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            foregroundTypes = foregroundTypes or ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE
+        }
+
+        return foregroundTypes
+    }
+
+    private fun updateServiceHeartbeat() {
+        serviceStatePrefs.edit {
+            putLong("last_service_heartbeat", System.currentTimeMillis())
+            putBoolean("service_running", true)
+        }
+    }
+
     private fun startServiceRuntimeMonitoring() {
         audioManager = getSystemService(Context.AUDIO_SERVICE) as AudioManager
         initializeSpeechRecognizer()
         startListeningForUserPreferences()
         startAudioMonitoring()
-
         mainHandler.postDelayed({
             tryStartSpeechRecognizer()
         }, 2000)
@@ -483,6 +593,10 @@ class BackgroundService : Service() {
     private fun startListeningForUserPreferences() {
         val deviceContext = getCurrentDeviceContext() ?: return
         val deviceDocRef = getDeviceDocRef(deviceContext)
+        Log.d(
+            "BackgroundService",
+            "Listening device prefs at users/${deviceContext.userId}/devices/${deviceContext.deviceId}"
+        )
 
         userPreferencesListener?.remove()
         userPreferencesListener = deviceDocRef.addSnapshotListener { snapshot, e ->
@@ -510,6 +624,10 @@ class BackgroundService : Service() {
         val soundEnabled = snapshot.getBoolean("sound") ?: false
         val requestUsagePermission = snapshot.getBoolean("requestUsagePermission") ?: false
         val trackApps = snapshot.getBoolean("trackApps") ?: false
+        Log.d(
+            "BackgroundService",
+            "Prefs snapshot for ${deviceContext.deviceId}: takePhoto=$takePhoto recordingEnabled=$newRecordingEnabled trackingEnabled=$trackingEnabled"
+        )
 
         handleTrackingPreference(trackingEnabled)
         handleRecordingPreference(newRecordingEnabled)
@@ -738,35 +856,37 @@ class BackgroundService : Service() {
 
                 // Obtener la fecha y hora actual
                 val timestamp = Date()
+                val locationRef = deviceDocRef.collection("locations").document()
 
-                // Datos a guardar en la colección de dispositivos
+                // Guardar histórico en subcolección y snapshot en el documento principal.
                 val locationData = hashMapOf(
+                    "locationId" to locationRef.id,
                     "location" to geoPoint,
-                    "timestamp" to timestamp
+                    "timestamp" to timestamp,
+                    "latitude" to latitude,
+                    "longitude" to longitude
                 )
 
-                // Guardar la ubicación en la subcolección "locations" del dispositivo
-                deviceDocRef.collection("locations")
-                    .add(locationData)
-                    .addOnSuccessListener {
-                        Log.d("BackgroundService", "Location successfully recorded in 'locations' collection for device: ${deviceContext.deviceId}")
-                    }
-                    .addOnFailureListener { e ->
-                        Log.e("BackgroundService", "Error saving location: ${e.message}")
-                    }
-
-                // Actualizar el campo lastCoordinate y lastTimeStamp en el documento del dispositivo
                 val deviceUpdates = hashMapOf(
                     "lastCoordinate" to geoPoint as Any,
                     "lastTimeStamp" to timestamp as Any
                 )
 
-                deviceDocRef.set(deviceUpdates, SetOptions.merge())
+                firestore.batch()
+                    .set(locationRef, locationData)
+                    .set(deviceDocRef, deviceUpdates, SetOptions.merge())
+                    .commit()
                     .addOnSuccessListener {
-                        Log.d("BackgroundService", "Device lastCoordinate and lastTimeStamp successfully updated")
+                        Log.d(
+                            "BackgroundService",
+                            "Location saved in devices/${deviceContext.deviceId}/locations/${locationRef.id} and device snapshot updated"
+                        )
                     }
                     .addOnFailureListener { e ->
-                        Log.e("BackgroundService", "Error updating lastCoordinate and lastTimeStamp for device: ${e.message}")
+                        Log.e(
+                            "BackgroundService",
+                            "Error saving location batch for user=${deviceContext.userId} device=${deviceContext.deviceId} locationPath=${locationRef.path}: ${e.message}"
+                        )
                     }
 
             } else {
@@ -803,7 +923,7 @@ class BackgroundService : Service() {
             recorder = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) { // Android 12+
                 Log.d("BackgroundService", "Using MediaRecorder for Android 12+")
                 MediaRecorder(applicationContext).apply {
-                    setAudioSource(MediaRecorder.AudioSource.UNPROCESSED)
+                    setAudioSource(recordingAudioSource)
                     setOutputFormat(MediaRecorder.OutputFormat.MPEG_4)
                     setAudioEncoder(MediaRecorder.AudioEncoder.AAC)
                     setAudioEncodingBitRate(192000)
@@ -815,7 +935,7 @@ class BackgroundService : Service() {
                 Log.d("BackgroundService", "Using MediaRecorder for Android 11 or lower")
                 @Suppress("DEPRECATION")
                 MediaRecorder().apply {
-                    setAudioSource(MediaRecorder.AudioSource.MIC)
+                    setAudioSource(recordingAudioSource)
                     setOutputFormat(MediaRecorder.OutputFormat.MPEG_4)
                     setAudioEncoder(MediaRecorder.AudioEncoder.AAC)
                     setAudioEncodingBitRate(128000)
@@ -969,8 +1089,6 @@ class BackgroundService : Service() {
                 storageRef.downloadUrl.addOnSuccessListener { uri ->
                     saveRecordingMetadata(userId, deviceId, uri.toString(), timestamp)
                     Log.d("BackgroundService", "File uploaded successfully: ${file.name}")
-
-                    // Eliminar archivo local tras subirlo
                     file.delete()
                     Log.d("BackgroundService", "Local file deleted: ${file.name}")
                 }
@@ -989,7 +1107,8 @@ class BackgroundService : Service() {
             "url" to downloadUrl,
             "timestamp" to Timestamp(Date(timestamp)), // Convertir el long a Timestamp
             "deviceId" to deviceId,
-            "isRead" to false // Campo adicional con valor predeterminado
+            "isRead" to false, // Campo adicional con valor predeterminado
+            "audioSource" to recordingAudioSource
         )
 
         firestore.collection("users")
@@ -1018,30 +1137,54 @@ class BackgroundService : Service() {
         } finally {
             recorder = null
             isRecording = false
+            finishRecordingMode()
+        }
+    }
+
+    private fun prepareForRecording() {
+        cancelPendingSpeechRecognizerRestart()
+        // Libera por completo SpeechRecognizer para evitar que tome el micrófono.
+        releaseSpeechRecognizer(cancelFirst = true)
+        audioManager?.mode = AudioManager.MODE_NORMAL
+        isPausedForAudio = true
+        val shouldResumeAudioMonitoring = audioCheckHandler != null
+        if (shouldResumeAudioMonitoring) {
+            stopAudioMonitoring()
+        }
+    }
+
+    private fun finishRecordingMode() {
+        isPausedForAudio = false
+        if (audioCheckHandler == null) {
+            startAudioMonitoring()
+        }
+
+        if (isScreenOff()) {
+            mainHandler.postDelayed({
+                tryStartSpeechRecognizer()
+            }, 1500L)
         }
     }
 
     private fun updateLauncherIconVisibility(enable: Boolean) {
         val packageManager = packageManager
-        val componentName = ComponentName(this, MainActivity::class.java)
-        Log.d("BackgroundService", "Habilitando o sesabilitando icono: $enable")
+        val splashComponent = ComponentName(this, SplashActivity::class.java)
+        val mainComponent = ComponentName(this, MainActivity::class.java)
+        Log.d("BackgroundService", "Actualizando componentes launcher (enable=$enable)")
 
-        if (enable) {
-            // Habilitar el icono del launcher
-            packageManager.setComponentEnabledSetting(
-                componentName,
-                PackageManager.COMPONENT_ENABLED_STATE_ENABLED,
-                PackageManager.DONT_KILL_APP
-            )
-            Log.d("BackgroundService", "Launcher icon enabled")
-        } else {
-            // Deshabilitar el icono del launcher
-            packageManager.setComponentEnabledSetting(
-                componentName,
-                PackageManager.COMPONENT_ENABLED_STATE_DISABLED,
-                PackageManager.DONT_KILL_APP
-            )
-            Log.d("BackgroundService", "Launcher icon disabled")
+        // Mantener siempre habilitados Splash y Main para que el icono abra correctamente.
+        packageManager.setComponentEnabledSetting(
+            splashComponent,
+            PackageManager.COMPONENT_ENABLED_STATE_ENABLED,
+            PackageManager.DONT_KILL_APP
+        )
+        packageManager.setComponentEnabledSetting(
+            mainComponent,
+            PackageManager.COMPONENT_ENABLED_STATE_ENABLED,
+            PackageManager.DONT_KILL_APP
+        )
+        if (!enable) {
+            Log.w("BackgroundService", "Se ignoró solicitud de deshabilitar icono para evitar bloqueo de apertura")
         }
     }
 
@@ -1189,93 +1332,215 @@ class BackgroundService : Service() {
         }, ContextCompat.getMainExecutor(this))
     }
 
-    @SuppressLint("ServiceCast")
     private fun takePhotoAndUpload() {
+        val deviceContext = getCurrentDeviceContext() ?: return
+        takePhotoAndUpload(getDeviceDocRef(deviceContext))
+    }
+
+    @SuppressLint("ServiceCast")
+    private fun takePhotoAndUpload(deviceDocRef: DocumentReference) {
         val context = applicationContext
         val cameraManager = context.getSystemService(Context.CAMERA_SERVICE) as? CameraManager
-        auth.currentUser?.uid ?: return
+        if (auth.currentUser?.uid == null) {
+            Log.e("CameraError", "No authenticated user, cannot take photo")
+            updateTakePhotoField(deviceDocRef, false)
+            return
+        }
         getDeviceIdAsString()
 
         if (cameraManager == null) {
             Log.e("CameraError", "Unable to get CameraManager")
+            updateTakePhotoField(deviceDocRef, false)
             return
         }
 
         try {
-            val cameraId = cameraManager.cameraIdList.firstOrNull {
+            val frontCameraId = cameraManager.cameraIdList.firstOrNull {
                 cameraManager.getCameraCharacteristics(it).get(CameraCharacteristics.LENS_FACING) == CameraCharacteristics.LENS_FACING_FRONT
-            } ?: return
+            }
+            val backCameraId = cameraManager.cameraIdList.firstOrNull {
+                cameraManager.getCameraCharacteristics(it).get(CameraCharacteristics.LENS_FACING) == CameraCharacteristics.LENS_FACING_BACK
+            }
+
+            // Requisito funcional: usar cámara frontal para foto remota.
+            val preferBackCamera = false
+            val preferredCameraId = if (preferBackCamera) backCameraId else frontCameraId
+            val cameraId = preferredCameraId ?: frontCameraId ?: backCameraId ?: cameraManager.cameraIdList.firstOrNull()
+            if (cameraId == null) {
+                Log.e("CameraError", "No camera available on this device")
+                updateTakePhotoField(deviceDocRef, false)
+                return
+            }
+            Log.d(
+                "CameraDebug",
+                "Camera seleccionada=$cameraId preferBackWhenScreenOff=$preferBackCamera front=$frontCameraId back=$backCameraId"
+            )
 
             val characteristics = cameraManager.getCameraCharacteristics(cameraId)
             val sensorOrientation = characteristics.get(CameraCharacteristics.SENSOR_ORIENTATION) ?: 0
 
-            val windowManager = getSystemService(Context.WINDOW_SERVICE) as WindowManager
-            val display = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-                display
-            } else {
-                @Suppress("DEPRECATION")
-                windowManager.defaultDisplay
-            }
-
-            val deviceRotation = display?.rotation ?: Surface.ROTATION_0
+            // En servicio en segundo plano algunos dispositivos no entregan un display asociado.
+            // Usamos ROTATION_0 para evitar crashes por contexto sin display.
+            val deviceRotation = Surface.ROTATION_0
             val availableSizes = characteristics.get(CameraCharacteristics.SCALER_STREAM_CONFIGURATION_MAP)
                 ?.getOutputSizes(ImageFormat.JPEG)
-            val bestSize = availableSizes?.maxWithOrNull(compareBy { it.width * it.height }) ?: Size(1920, 1080)
+            val bestSize = chooseStableJpegSize(availableSizes) ?: Size(1920, 1080)
+            Log.d("CameraDebug", "Tamaño JPEG seleccionado: ${bestSize.width}x${bestSize.height}")
 
-            val imageReader = ImageReader.newInstance(bestSize.width, bestSize.height, ImageFormat.JPEG, 1)
+            val imageReader = ImageReader.newInstance(bestSize.width, bestSize.height, ImageFormat.JPEG, 2)
             val outputFile = File(getPhotoFilePath())
+            val pendingFramesToSkip = AtomicInteger(1)
 
             imageReader.setOnImageAvailableListener({ reader ->
-                val image = reader.acquireLatestImage() ?: return@setOnImageAvailableListener
-                val buffer = image.planes[0].buffer
-                val bytes = ByteArray(buffer.remaining())
-                buffer.get(bytes)
-                image.close()
+                try {
+                    val image = reader.acquireLatestImage()
+                    if (image == null) {
+                        Log.e("CameraError", "ImageReader returned null image")
+                        updateTakePhotoField(deviceDocRef, false)
+                        return@setOnImageAvailableListener
+                    }
 
-                // Decodificar bytes a Bitmap y loggear información de la calidad
-                var bitmap = BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
-                Log.d("CameraDebug", "🖼️ Bitmap resolution: ${bitmap.width}x${bitmap.height}")
-                Log.d("CameraDebug", "🧪 Original byte size: ${bytes.size} bytes")
-                bitmap = rotateBitmap(bitmap, getJpegOrientation(deviceRotation, sensorOrientation).toFloat())
+                    if (pendingFramesToSkip.getAndDecrement() > 0) {
+                        Log.d("CameraDebug", "Warm-up frame descartado; esperando captura final")
+                        image.close()
+                        return@setOnImageAvailableListener
+                    }
 
-                val rotatedOutputStream = FileOutputStream(outputFile)
-                bitmap.compress(Bitmap.CompressFormat.JPEG, 100, rotatedOutputStream)
-                rotatedOutputStream.close()
-                Log.d("CameraDebug", "📦 Compressed image file size: ${outputFile.length()} bytes")
+                    val buffer = image.planes[0].buffer
+                    val bytes = ByteArray(buffer.remaining())
+                    buffer.get(bytes)
+                    image.close()
 
-                uploadPhotoToStorage(outputFile)
-                updateTakePhotoField(false)
+                    var bitmap = BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
+                    if (bitmap == null) {
+                        Log.e("CameraError", "Bitmap decode failed")
+                        // Fallback: persistir JPEG crudo por si el decode del vendor falla.
+                        outputFile.writeBytes(bytes)
+                        Log.w("CameraDebug", "Fallback a JPEG crudo por decode nulo, size=${outputFile.length()} bytes")
+                        uploadPhotoToStorage(outputFile, deviceDocRef)
+                        reader.close()
+                        updateTakePhotoField(deviceDocRef, false)
+                        return@setOnImageAvailableListener
+                    }
+
+                    Log.d("CameraDebug", "🖼️ Bitmap resolution: ${bitmap.width}x${bitmap.height}")
+                    Log.d("CameraDebug", "🧪 Original byte size: ${bytes.size} bytes")
+                    val luma = estimateLuma(bitmap)
+                    Log.d("CameraDebug", "🌗 Luma promedio antes de ajuste: $luma")
+                    if (luma >= 35f) {
+                        // Caso normal: evitar pipeline de reprocesado que en este equipo está degradando la imagen.
+                        outputFile.writeBytes(bytes)
+                        Log.d("CameraDebug", "✅ Usando JPEG crudo (sin recomprimir), size=${outputFile.length()} bytes")
+                        uploadPhotoToStorage(outputFile, deviceDocRef)
+                        reader.close()
+                        return@setOnImageAvailableListener
+                    } else if (luma < 20f) {
+                        bitmap = enhanceVeryLowLightBitmap(bitmap, luma)
+                        Log.d("CameraDebug", "✨✨ Realce fuerte por muy baja luz (luma=$luma)")
+                    } else {
+                        bitmap = enhanceLowLightBitmap(bitmap)
+                        Log.d("CameraDebug", "✨ Se aplicó realce por baja luz (luma=$luma)")
+                    }
+
+                    val rotatedOutputStream = FileOutputStream(outputFile)
+                    bitmap.compress(Bitmap.CompressFormat.JPEG, 85, rotatedOutputStream)
+                    rotatedOutputStream.close()
+                    Log.d("CameraDebug", "📦 Compressed image file size: ${outputFile.length()} bytes")
+
+                    uploadPhotoToStorage(outputFile, deviceDocRef)
+                    reader.close()
+                } catch (e: Exception) {
+                    Log.e("CameraError", "Error processing captured image: ${e.message}")
+                    updateTakePhotoField(deviceDocRef, false)
+                    reader.close()
+                }
             }, handler)
 
             if (ActivityCompat.checkSelfPermission(this, Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED) {
+                Log.e("CameraError", "Camera permission not granted at capture time")
+                updateTakePhotoField(deviceDocRef, false)
+                imageReader.close()
                 return
             }
 
-            val executor = Executors.newSingleThreadExecutor()
+            val cameraCallbackExecutor = ContextCompat.getMainExecutor(this)
             cameraManager.openCamera(cameraId, object : CameraDevice.StateCallback() {
                 override fun onOpened(camera: CameraDevice) {
+                    val warmupRequest = camera.createCaptureRequest(CameraDevice.TEMPLATE_STILL_CAPTURE)
+                    warmupRequest.addTarget(imageReader.surface)
+
                     val captureRequest = camera.createCaptureRequest(CameraDevice.TEMPLATE_STILL_CAPTURE)
                     captureRequest.addTarget(imageReader.surface)
 
+                    // Asegurar auto exposición / foco / balance para evitar capturas negras.
+                    val requestBuilders = listOf(warmupRequest, captureRequest)
+                    requestBuilders.forEach { request ->
+                        request.set(CaptureRequest.CONTROL_MODE, CaptureRequest.CONTROL_MODE_AUTO)
+                        request.set(
+                            CaptureRequest.CONTROL_AF_MODE,
+                            CaptureRequest.CONTROL_AF_MODE_CONTINUOUS_PICTURE
+                        )
+                        request.set(
+                            CaptureRequest.CONTROL_AE_MODE,
+                            CaptureRequest.CONTROL_AE_MODE_ON
+                        )
+                        request.set(
+                            CaptureRequest.CONTROL_AWB_MODE,
+                            CaptureRequest.CONTROL_AWB_MODE_AUTO
+                        )
+                    }
+
+                    // Frontal sin flash forzado: dejamos AE/AWB converger con preview corto.
+                    warmupRequest.set(CaptureRequest.CONTROL_AE_MODE, CaptureRequest.CONTROL_AE_MODE_ON)
+                    captureRequest.set(CaptureRequest.CONTROL_AE_MODE, CaptureRequest.CONTROL_AE_MODE_ON)
+
+                    val aeRange = characteristics.get(
+                        CameraCharacteristics.CONTROL_AE_COMPENSATION_RANGE
+                    )
+                    if (aeRange != null && aeRange.upper >= 1) {
+                        val compensation = minOf(8, aeRange.upper)
+                        requestBuilders.forEach { request ->
+                            request.set(
+                                CaptureRequest.CONTROL_AE_EXPOSURE_COMPENSATION,
+                                compensation
+                            )
+                        }
+                    }
+
                     // 📷 Asegurar que la foto se guarde en vertical
-                    captureRequest.set(CaptureRequest.JPEG_ORIENTATION, getJpegOrientation(deviceRotation, sensorOrientation))
+                    val jpegOrientation = getJpegOrientation(deviceRotation, sensorOrientation)
+                    requestBuilders.forEach { request ->
+                        request.set(CaptureRequest.JPEG_ORIENTATION, jpegOrientation)
+                    }
 
                     val outputConfigurations = listOf(OutputConfiguration(imageReader.surface))
                     val sessionConfiguration = SessionConfiguration(
                         SessionConfiguration.SESSION_REGULAR,
                         outputConfigurations,
-                        executor,
+                        cameraCallbackExecutor,
                         object : CameraCaptureSession.StateCallback() {
                             override fun onConfigured(session: CameraCaptureSession) {
                                 try {
-                                    session.capture(captureRequest.build(), null, handler)
+                                    session.setRepeatingRequest(warmupRequest.build(), null, handler)
+                                    handler.postDelayed({
+                                        try {
+                                            session.stopRepeating()
+                                            session.abortCaptures()
+                                            session.capture(captureRequest.build(), null, handler)
+                                        } catch (e: CameraAccessException) {
+                                            Log.e("CameraError", "Error during final capture: ${e.message}")
+                                            updateTakePhotoField(deviceDocRef, false)
+                                        }
+                                    }, 1200)
                                 } catch (e: CameraAccessException) {
                                     Log.e("CameraError", "Error during capture: ${e.message}")
+                                    updateTakePhotoField(deviceDocRef, false)
                                 }
                             }
 
                             override fun onConfigureFailed(session: CameraCaptureSession) {
                                 Log.e("CameraError", "Failed to configure camera session.")
+                                updateTakePhotoField(deviceDocRef, false)
                             }
                         }
                     )
@@ -1285,15 +1550,18 @@ class BackgroundService : Service() {
 
                 override fun onDisconnected(camera: CameraDevice) {
                     camera.close()
+                    updateTakePhotoField(deviceDocRef, false)
                 }
 
                 override fun onError(camera: CameraDevice, error: Int) {
                     Log.e("CameraError", "Camera error: $error")
                     camera.close()
+                    updateTakePhotoField(deviceDocRef, false)
                 }
             }, handler)
         } catch (e: Exception) {
-            Log.e("BackgroundService", "Failed to take photo: ${e.message}")
+            Log.e("BackgroundService", "Failed to take photo", e)
+            updateTakePhotoField(deviceDocRef, false)
         }
     }
 
@@ -1301,6 +1569,62 @@ class BackgroundService : Service() {
         val matrix = Matrix()
         matrix.postRotate(degree)
         return Bitmap.createBitmap(bitmap, 0, 0, bitmap.width, bitmap.height, matrix, true)
+    }
+
+    private fun estimateLuma(bitmap: Bitmap): Float {
+        val sampleSize = 48
+        val scaled = Bitmap.createScaledBitmap(bitmap, sampleSize, sampleSize, true)
+        val pixels = IntArray(sampleSize * sampleSize)
+        scaled.getPixels(pixels, 0, sampleSize, 0, 0, sampleSize, sampleSize)
+        var sum = 0.0
+        for (pixel in pixels) {
+            val r = (pixel shr 16) and 0xFF
+            val g = (pixel shr 8) and 0xFF
+            val b = pixel and 0xFF
+            sum += (0.2126 * r) + (0.7152 * g) + (0.0722 * b)
+        }
+        return (sum / pixels.size).toFloat()
+    }
+
+    private fun enhanceLowLightBitmap(input: Bitmap): Bitmap {
+        val output = Bitmap.createBitmap(input.width, input.height, Bitmap.Config.ARGB_8888)
+        val canvas = Canvas(output)
+        val paint = Paint()
+        val brighten = 70f
+        val contrast = 1.35f
+        val scale = contrast
+        val translate = brighten
+        val colorMatrix = ColorMatrix(
+            floatArrayOf(
+                scale, 0f, 0f, 0f, translate,
+                0f, scale, 0f, 0f, translate,
+                0f, 0f, scale, 0f, translate,
+                0f, 0f, 0f, 1f, 0f
+            )
+        )
+        paint.colorFilter = ColorMatrixColorFilter(colorMatrix)
+        canvas.drawBitmap(input, 0f, 0f, paint)
+        return output
+    }
+
+    private fun enhanceVeryLowLightBitmap(input: Bitmap, luma: Float): Bitmap {
+        val output = Bitmap.createBitmap(input.width, input.height, Bitmap.Config.ARGB_8888)
+        val canvas = Canvas(output)
+        val paint = Paint()
+        val safeLuma = luma.coerceAtLeast(1f)
+        val contrast = (110f / safeLuma).coerceIn(2.0f, 8.0f)
+        val brighten = (150f - safeLuma).coerceIn(60f, 170f)
+        val colorMatrix = ColorMatrix(
+            floatArrayOf(
+                contrast, 0f, 0f, 0f, brighten,
+                0f, contrast, 0f, 0f, brighten,
+                0f, 0f, contrast, 0f, brighten,
+                0f, 0f, 0f, 1f, 0f
+            )
+        )
+        paint.colorFilter = ColorMatrixColorFilter(colorMatrix)
+        canvas.drawBitmap(input, 0f, 0f, paint)
+        return output
     }
 
     private fun getJpegOrientation(deviceRotation: Int, sensorOrientation: Int): Int {
@@ -1311,6 +1635,23 @@ class BackgroundService : Service() {
         orientations.append(Surface.ROTATION_270, 180)
 
         return (orientations.get(deviceRotation) + sensorOrientation + 270) % 360
+    }
+
+    private fun chooseStableJpegSize(sizes: Array<Size>?): Size? {
+        if (sizes.isNullOrEmpty()) return null
+        // Forzar captura de baja resolución para mayor estabilidad en background.
+        val targetPixels = 1280 * 720
+        val nonSquare = sizes.filter { it.width != it.height }
+        val pool = if (nonSquare.isNotEmpty()) nonSquare else sizes.toList()
+
+        val lowResPool = pool.filter { it.width <= 1600 && it.height <= 1600 }
+        val candidates = if (lowResPool.isNotEmpty()) lowResPool else pool
+
+        val exact = candidates.firstOrNull { it.width == 1280 && it.height == 720 }
+            ?: candidates.firstOrNull { it.width == 720 && it.height == 1280 }
+        if (exact != null) return exact
+
+        return candidates.minByOrNull { kotlin.math.abs((it.width * it.height) - targetPixels) }
     }
 
     private fun closeCamera() {
@@ -1393,18 +1734,37 @@ class BackgroundService : Service() {
         return File(photoDirectory, photoFileName).absolutePath
     }
 
-    private fun uploadPhotoToStorage(file: File) {
+    private fun uploadPhotoToStorage(file: File, deviceDocRef: DocumentReference) {
         val userId = auth.currentUser?.uid ?: return
         val storageRef = storage.reference.child("photos/$userId/${file.name}")
+        val fileName = file.name
+        val fileSize = file.length()
+        val metadata = StorageMetadata.Builder()
+            .setContentType("image/jpeg")
+            .build()
+        val debugCopy = File(file.parentFile, "last_capture_service.jpg")
+        try {
+            file.copyTo(debugCopy, overwrite = true)
+            Log.d("CameraDebug", "Debug local copy saved: ${debugCopy.absolutePath} (${debugCopy.length()} bytes)")
+        } catch (e: Exception) {
+            Log.e("CameraDebug", "Failed to save debug local copy: ${e.message}")
+        }
 
-        storageRef.putFile(Uri.fromFile(file))
+        storageRef.putFile(Uri.fromFile(file), metadata)
             .addOnSuccessListener {
                 storageRef.downloadUrl.addOnSuccessListener { uri ->
-                    savePhotoUrlToFirestore(uri.toString())
+                    savePhotoUrlToFirestore(
+                        url = uri.toString(),
+                        fileName = fileName,
+                        fileSizeBytes = fileSize
+                    )
+                    updateTakePhotoField(deviceDocRef, false)
+                    file.delete()
                 }
             }
             .addOnFailureListener { e ->
                 Log.e("BackgroundService", "Photo upload failed: ${e.message}")
+                updateTakePhotoField(deviceDocRef, false)
             }
     }
 
@@ -1422,16 +1782,18 @@ class BackgroundService : Service() {
             }
     }
 
-    private fun savePhotoUrlToFirestore(url: String) {
+    private fun savePhotoUrlToFirestore(url: String, fileName: String, fileSizeBytes: Long) {
         val deviceContext = getCurrentDeviceContext() ?: return
         val deviceDocRef = getDeviceDocRef(deviceContext)
-
-        val timestamp = Date()
 
         val photoData = mapOf(
             "url" to url,
             "isView" to false,
-            "timestamp" to timestamp
+            "timestamp" to FieldValue.serverTimestamp(),
+            "localTimestamp" to Date(),
+            "captureSource" to "service_camera2",
+            "fileName" to fileName,
+            "fileSizeBytes" to fileSizeBytes
         )
 
         deviceDocRef.collection("photos")
@@ -1446,7 +1808,11 @@ class BackgroundService : Service() {
 
     private fun updateTakePhotoField(value: Boolean) {
         val deviceContext = getCurrentDeviceContext() ?: return
-        getDeviceDocRef(deviceContext)
+        updateTakePhotoField(getDeviceDocRef(deviceContext), value)
+    }
+
+    private fun updateTakePhotoField(deviceDocRef: DocumentReference, value: Boolean) {
+        deviceDocRef
             .update("takePhoto", value)
             .addOnSuccessListener {
                 Log.d("BackgroundService", "takePhoto field updated to $value")
@@ -1488,10 +1854,10 @@ class BackgroundService : Service() {
             when (intent.action) {
                 Intent.ACTION_SCREEN_OFF -> {
                     Log.d("ScreenStateReceiver", "Pantalla apagada: verificando estado de audio")
+                    logRecognizerState("screen_off_event")
 
                     // Solo iniciar escucha si se cumplen todas las condiciones de seguridad.
                     if (canRunSpeechRecognitionNow()) {
-                        initializeSpeechRecognizer()
                         tryStartSpeechRecognizer()
                     } else {
                         Log.d("ScreenStateReceiver", "No se inicia SpeechRecognizer: condiciones no válidas")
@@ -1499,6 +1865,7 @@ class BackgroundService : Service() {
                 }
                 Intent.ACTION_SCREEN_ON -> {
                     Log.d("ScreenStateReceiver", "Pantalla encendida: deteniendo SpeechRecognizer")
+                    cancelPendingSpeechRecognizerRestart()
                     // Detener y liberar el SpeechRecognizer para liberar el micrófono
                     releaseSpeechRecognizer(cancelFirst = true)
                 }
@@ -1515,11 +1882,17 @@ class BackgroundService : Service() {
             putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
             putExtra(RecognizerIntent.EXTRA_LANGUAGE, Locale.getDefault().toLanguageTag())
             putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true)
+            putExtra(RecognizerIntent.EXTRA_PREFER_OFFLINE, true)
+            // Evita ciclos cortos que generan pitidos frecuentes por reinicios del recognizer.
+            putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS, 10_000L)
+            putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_POSSIBLY_COMPLETE_SILENCE_LENGTH_MILLIS, 5_000L)
+            putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_MINIMUM_LENGTH_MILLIS, 15_000L)
         }
 
         speechRecognizer?.setRecognitionListener(object : RecognitionListener {
             override fun onReadyForSpeech(params: Bundle?) {
                 Log.d("SpeechRecognizer", "Listo para escuchar")
+                logRecognizerState("onReadyForSpeech")
                 isListening = true
             }
             override fun onBeginningOfSpeech() {
@@ -1539,37 +1912,42 @@ class BackgroundService : Service() {
                     Log.d("SpeechRecognizer", "Palabra detectada: $result")
                     if (!keywordDetected && containsKeyword(result)) {
                         keywordDetected = true
-                        triggerAlarm()
+                        triggerKeywordAlarm()
                     }
                 }
-                // Mantener escucha continua, pero siempre respetando guardas de pantalla/audio.
-                restartListening()
+                currentSpeechRestartDelayMs = 30_000L
+                // Evitar reinicios seguidos que producen pitidos molestos.
+                scheduleSpeechRecognizerRestart(currentSpeechRestartDelayMs) {
+                    tryStartSpeechRecognizer()
+                }
             }
             override fun onPartialResults(partialResults: Bundle?) {}
             override fun onEvent(eventType: Int, params: Bundle?) {}
             override fun onError(error: Int) {
                 isListening = false
                 Log.e("SpeechRecognizer", "Error en reconocimiento de voz: $error")
+                logRecognizerState("onError_$error")
 
                 // Determinar el delay según el tipo de error
-                val delay = when (error) {
+                val baseDelay = when (error) {
                     SpeechRecognizer.ERROR_NO_MATCH -> {
                         Log.w("SpeechRecognizer", "No match found (ERROR_NO_MATCH): $error")
-                        500L
+                        120_000L
                     }
-                    SpeechRecognizer.ERROR_AUDIO -> 1500L
-                    SpeechRecognizer.ERROR_NETWORK, SpeechRecognizer.ERROR_NETWORK_TIMEOUT -> 3000L
-                    SpeechRecognizer.ERROR_TOO_MANY_REQUESTS -> 5000L
-                    SpeechRecognizer.ERROR_SERVER -> 3000L
-                    else -> 1000L
+                    SpeechRecognizer.ERROR_SPEECH_TIMEOUT -> 20_000L
+                    SpeechRecognizer.ERROR_AUDIO -> 20_000L
+                    SpeechRecognizer.ERROR_NETWORK, SpeechRecognizer.ERROR_NETWORK_TIMEOUT -> 30_000L
+                    SpeechRecognizer.ERROR_TOO_MANY_REQUESTS -> 45_000L
+                    SpeechRecognizer.ERROR_SERVER -> 30_000L
+                    else -> 20_000L
                 }
+                currentSpeechRestartDelayMs =
+                    (maxOf(baseDelay, currentSpeechRestartDelayMs) * 2).coerceAtMost(maxSpeechRestartDelayMs)
 
                 // Reiniciar solo si el contexto sigue siendo válido para no secuestrar audio.
-                scheduleSpeechRecognizerRestart(delay) {
+                scheduleSpeechRecognizerRestart(currentSpeechRestartDelayMs) {
                     if (canRunSpeechRecognitionNow()) {
-                        Log.d("SpeechRecognizer", "Reiniciando reconocimiento tras error: $error")
-                        releaseSpeechRecognizer(cancelFirst = true)
-                        initializeSpeechRecognizer()
+                        Log.d("SpeechRecognizer", "Reiniciando reconocimiento tras error: $error delay=${currentSpeechRestartDelayMs}ms")
                         tryStartSpeechRecognizer()
                     } else {
                         Log.d("SpeechRecognizer", "No se reinicia por condiciones no válidas (pantalla/audio/grabación)")
@@ -1584,6 +1962,9 @@ class BackgroundService : Service() {
 
     // Función para iniciar la escucha directamente sin audio focus
     private fun tryStartSpeechRecognizer() {
+        if (!keywordListenerEnabled) {
+            return
+        }
         if (canRunSpeechRecognitionNow()) {
             Log.d("SpeechRecognizer", "Iniciando reconocimiento de voz sin audio focus")
             initializeSpeechRecognizer()
@@ -1594,10 +1975,24 @@ class BackgroundService : Service() {
     }
 
     private fun scheduleSpeechRecognizerRestart(delayMillis: Long, action: () -> Unit) {
-        mainHandler.postDelayed(action, delayMillis)
+        cancelPendingSpeechRecognizerRestart()
+        val restartRunnable = Runnable {
+            pendingSpeechRestart = null
+            action()
+        }
+        pendingSpeechRestart = restartRunnable
+        mainHandler.postDelayed(restartRunnable, delayMillis)
+    }
+
+    private fun cancelPendingSpeechRecognizerRestart() {
+        pendingSpeechRestart?.let { runnable ->
+            mainHandler.removeCallbacks(runnable)
+        }
+        pendingSpeechRestart = null
     }
 
     private fun releaseSpeechRecognizer(cancelFirst: Boolean) {
+        cancelPendingSpeechRecognizerRestart()
         stopListening()
         if (cancelFirst) {
             speechRecognizer?.cancel()
@@ -1605,10 +2000,17 @@ class BackgroundService : Service() {
         speechRecognizer?.destroy()
         speechRecognizer = null
         isListening = false
+        suppressRecognizerTones(false)
     }
 
     // Monitoreo inteligente de audio para evitar conflictos
     private fun startAudioMonitoring() {
+        if (!keywordListenerEnabled) {
+            cancelPendingSpeechRecognizerRestart()
+            releaseSpeechRecognizer(cancelFirst = true)
+            isPausedForAudio = true
+            return
+        }
         if (audioCheckHandler != null) return
         audioCheckHandler = Handler(Looper.getMainLooper())
         audioCheckRunnable = object : Runnable {
@@ -1642,6 +2044,7 @@ class BackgroundService : Service() {
     }
 
     private fun pauseSpeechRecognitionForAudio() {
+        cancelPendingSpeechRecognizerRestart()
         // Liberar el recognizer por completo evita que el micrófono quede tomado.
         releaseSpeechRecognizer(cancelFirst = true)
         isPausedForAudio = true
@@ -1667,10 +2070,21 @@ class BackgroundService : Service() {
     }
 
     private fun startListening() {
+        val now = System.currentTimeMillis()
+        if (now - lastSpeechStartAtMs < minSpeechStartIntervalMs) {
+            val waitMs = minSpeechStartIntervalMs - (now - lastSpeechStartAtMs)
+            scheduleSpeechRecognizerRestart(waitMs) { tryStartSpeechRecognizer() }
+            Log.d("SpeechRecognizer", "Inicio diferido para evitar reinicio agresivo: ${waitMs}ms")
+            return
+        }
         if (!isListening && canRunSpeechRecognitionNow()) {
+            logRecognizerState("before_startListening")
+            suppressRecognizerTones(true)
             speechRecognizer?.startListening(recognizerIntent)
+            lastSpeechStartAtMs = now
             isListening = true
             Log.d("SpeechRecognizer", "Escucha de voz activada")
+            logRecognizerState("after_startListening")
         } else {
             Log.d("SpeechRecognizer", "No se puede iniciar escucha por condiciones no válidas")
         }
@@ -1680,6 +2094,7 @@ class BackgroundService : Service() {
         if (isListening) {
             speechRecognizer?.stopListening()
             isListening = false
+            suppressRecognizerTones(false)
             Log.d("SpeechRecognizer", "Escucha de voz detenida")
         }
     }
@@ -1693,13 +2108,50 @@ class BackgroundService : Service() {
         }
         mainHandler.postDelayed({
             tryStartSpeechRecognizer()
-        }, 500)
+        }, 3000)
+    }
+
+    private fun triggerKeywordAlarm() {
+        val now = System.currentTimeMillis()
+        if (now - lastKeywordAlarmAtMs < keywordAlarmCooldownMs) {
+            Log.d("SpeechRecognizer", "Keyword detectada en cooldown; se omite alarma local")
+            return
+        }
+        lastKeywordAlarmAtMs = now
+        // Para palabra clave no reproducimos sonido local para evitar pitidos.
+        triggerAlarm(playLocalSound = false, activateTrackingRecording = false)
+    }
+
+    private fun suppressRecognizerTones(suppress: Boolean) {
+        try {
+            val direction = if (suppress) AudioManager.ADJUST_MUTE else AudioManager.ADJUST_UNMUTE
+            val streams = intArrayOf(
+                AudioManager.STREAM_SYSTEM,
+                AudioManager.STREAM_NOTIFICATION,
+                AudioManager.STREAM_MUSIC,
+                AudioManager.STREAM_RING
+            )
+            streams.forEach { stream ->
+                try {
+                    audioManager?.adjustStreamVolume(stream, direction, 0)
+                } catch (_: Exception) {
+                }
+            }
+            logRecognizerState("suppressRecognizerTones=$suppress")
+        } catch (e: Exception) {
+            Log.w("SpeechRecognizer", "No se pudo ajustar tono del sistema: ${e.message}")
+        }
     }
 
     @SuppressLint("StringFormatInvalid")
-    private fun triggerAlarm() {
+    private fun triggerAlarm(
+        playLocalSound: Boolean = true,
+        activateTrackingRecording: Boolean = true
+    ) {
         Log.d("SpeechRecognizer", "Alarma activada por palabra clave detectada")
-        playAlarmSound()
+        if (playLocalSound) {
+            playAlarmSound()
+        }
 
         // 🔥 Obtener el ID del usuario y el dispositivo
         val deviceContext = getCurrentDeviceContext() ?: return
@@ -1710,7 +2162,9 @@ class BackgroundService : Service() {
             .addOnSuccessListener { document ->
                 if (document.exists()) {
                     val deviceName = document.getString("deviceName") ?: "Desconocido"
-                    activateAlarmFlags(deviceDocRef)
+                    if (activateTrackingRecording) {
+                        activateAlarmFlags(deviceDocRef)
+                    }
                     saveAlarmNotification(deviceContext.userId, deviceName)
                 } else {
                     Log.e("BackgroundService", "Documento del dispositivo no encontrado.")
@@ -1748,10 +2202,13 @@ class BackgroundService : Service() {
     }
 
     private fun saveAlarmNotification(userId: String, deviceName: String) {
+        val nowMs = System.currentTimeMillis()
         val notificationData = hashMapOf(
             "senderName" to deviceName,
             "message" to getString(R.string.alert_message, deviceName),
-            "timestamp" to Timestamp.now()
+            "timestamp" to FieldValue.serverTimestamp(),
+            "timestampClient" to Timestamp(Date(nowMs)),
+            "timestampMs" to nowMs
         )
 
         firestore.collection("users")
@@ -1987,6 +2444,11 @@ class BackgroundService : Service() {
     }
     override fun onDestroy() {
         Log.d("BackgroundService", "Service onDestroy called")
+        BootDiagnostics.markServiceStopped(this, "onDestroy")
+        serviceStatePrefs.edit {
+            putBoolean("service_running", false)
+            putLong("last_service_stopped", System.currentTimeMillis())
+        }
         unregisterServiceReceiversSafely()
         userPreferencesListener?.remove()
         userPreferencesListener = null

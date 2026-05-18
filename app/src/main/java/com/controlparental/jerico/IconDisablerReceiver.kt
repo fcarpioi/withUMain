@@ -11,18 +11,24 @@ import android.content.pm.PackageManager
 class IconDisablerReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent?) {
         val packageManager = context.packageManager
-        val componentName = ComponentName(context, MainActivity::class.java)
+        val splashComponent = ComponentName(context, SplashActivity::class.java)
+        val mainComponent = ComponentName(context, MainActivity::class.java)
 
         try {
-            Log.d("IconDisablerReceiver", "Deshabilitando ícono del launcher desde BroadcastReceiver")
+            Log.d("IconDisablerReceiver", "Forzando componentes launcher habilitados")
             packageManager.setComponentEnabledSetting(
-                componentName,
-                PackageManager.COMPONENT_ENABLED_STATE_DISABLED,
+                splashComponent,
+                PackageManager.COMPONENT_ENABLED_STATE_ENABLED,
                 PackageManager.DONT_KILL_APP
             )
-            Log.d("IconDisablerReceiver", "Ícono deshabilitado correctamente.")
+            packageManager.setComponentEnabledSetting(
+                mainComponent,
+                PackageManager.COMPONENT_ENABLED_STATE_ENABLED,
+                PackageManager.DONT_KILL_APP
+            )
+            Log.d("IconDisablerReceiver", "Componentes launcher habilitados correctamente.")
         } catch (e: Exception) {
-            Log.e("IconDisablerReceiver", "Error al intentar deshabilitar el ícono del launcher", e)
+            Log.e("IconDisablerReceiver", "Error al actualizar componentes launcher", e)
         }
     }
 }

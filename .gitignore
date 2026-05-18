@@ -29,6 +29,7 @@ keystore.properties
 *.log
 *.swp
 *.bak
+tmp_debug/
 
 # Otros
 .DS_Store
