@@ -699,51 +699,126 @@ class BackgroundService : Service() {
     }
     private fun handleTrackApps(deviceDocRef: DocumentReference) {
         val deviceContext = getCurrentDeviceContext() ?: return
+        if (!hasUsageStatsPermission(this)) {
+            updateTrackAppsStatus(
+                deviceDocRef = deviceDocRef,
+                status = "missing_usage_permission",
+                savedCount = 0,
+                extraUpdates = mapOf(
+                    "requestUsagePermission" to true,
+                    "trackAppsLastError" to "Usage Access permission is not granted"
+                )
+            )
+            Log.w("TrackApps", "No se puede recolectar uso de apps: falta Usage Access")
+            return
+        }
+
         val usageStatsManager = getSystemService(Context.USAGE_STATS_SERVICE) as UsageStatsManager
         val endTime = System.currentTimeMillis()
         val startTime = endTime - TimeUnit.DAYS.toMillis(1) // Últimas 24 horas
 
-        val stats = usageStatsManager.queryUsageStats(
-            UsageStatsManager.INTERVAL_DAILY,
-            startTime,
-            endTime
-        )
-        val filteredStats = stats.filter { it.totalTimeInForeground >= 5 * 60 * 1000L }
+        val stats = try {
+            usageStatsManager.queryUsageStats(
+                UsageStatsManager.INTERVAL_DAILY,
+                startTime,
+                endTime
+            )
+        } catch (e: Exception) {
+            updateTrackAppsStatus(
+                deviceDocRef = deviceDocRef,
+                status = "query_error",
+                savedCount = 0,
+                extraUpdates = mapOf("trackAppsLastError" to (e.message ?: e.javaClass.simpleName))
+            )
+            Log.e("TrackApps", "Error consultando UsageStats", e)
+            return
+        }
 
         if (stats.isEmpty()) {
             Log.w("TrackApps", "No se encontraron estadísticas de uso")
+            updateTrackAppsStatus(
+                deviceDocRef = deviceDocRef,
+                status = "no_usage_stats",
+                savedCount = 0,
+                extraUpdates = mapOf("trackAppsLastError" to "UsageStatsManager returned no stats")
+            )
             return
         }
 
         val usageRootRef = getUsageRootRef(deviceContext)
-
         val pm = packageManager
-
-        for (usage in filteredStats) {
+        val minForegroundMillis = 5 * 60 * 1000L
+        val allowedUsage = stats.mapNotNull { usage ->
             try {
-                if (!isTrackAppsPackageAllowed(pm, usage.packageName)) continue
-
-                val packageId = resolvePackageId(usage.packageName)
-                persistUsageData(
-                    targetRef = usageRootRef.document(packageId),
-                    usage = usage,
-                    logTag = "TrackApps",
-                    successPrefix = "Uso guardado para paquete"
-                )
-
+                if (usage.totalTimeInForeground < minForegroundMillis) return@mapNotNull null
+                if (!isTrackAppsPackageAllowed(pm, usage.packageName)) return@mapNotNull null
+                usage
             } catch (e: PackageManager.NameNotFoundException) {
                 Log.e("TrackApps", "App no encontrada: ${usage.packageName}")
-                continue
+                null
             }
         }
 
-        // Resetear el campo después de la operación
-        deviceDocRef.update("trackApps", false)
+        if (allowedUsage.isEmpty()) {
+            updateTrackAppsStatus(
+                deviceDocRef = deviceDocRef,
+                status = "no_matching_apps",
+                savedCount = 0,
+                extraUpdates = mapOf("trackAppsLastError" to "No non-system app exceeded the 5 minute threshold")
+            )
+            return
+        }
+
+        val batch = firestore.batch()
+        allowedUsage.forEach { usage ->
+            val packageId = resolvePackageId(usage.packageName)
+            batch.set(usageRootRef.document(packageId), buildUsageData(usage), SetOptions.merge())
+        }
+        batch.update(
+            deviceDocRef,
+            mapOf(
+                "trackApps" to false,
+                "trackAppsLastRunAt" to FieldValue.serverTimestamp(),
+                "trackAppsLastStatus" to "success",
+                "trackAppsLastSavedCount" to allowedUsage.size,
+                "trackAppsLastError" to null
+            )
+        )
+        batch.commit()
             .addOnSuccessListener {
-                Log.d("TrackApps", "trackApps actualizado a false luego de la recolección")
+                Log.d("TrackApps", "Uso de apps guardado. count=${allowedUsage.size}")
             }
             .addOnFailureListener { e ->
-                Log.e("TrackApps", "Error al actualizar trackApps: ${e.message}")
+                Log.e("TrackApps", "Error guardando uso de apps: ${e.message}")
+                updateTrackAppsStatus(
+                    deviceDocRef = deviceDocRef,
+                    status = "write_error",
+                    savedCount = 0,
+                    extraUpdates = mapOf("trackAppsLastError" to (e.message ?: e.javaClass.simpleName))
+                )
+            }
+    }
+
+    private fun updateTrackAppsStatus(
+        deviceDocRef: DocumentReference,
+        status: String,
+        savedCount: Int,
+        extraUpdates: Map<String, Any?> = emptyMap()
+    ) {
+        val updates = mutableMapOf<String, Any?>(
+            "trackApps" to false,
+            "trackAppsLastRunAt" to FieldValue.serverTimestamp(),
+            "trackAppsLastStatus" to status,
+            "trackAppsLastSavedCount" to savedCount
+        )
+        updates.putAll(extraUpdates)
+
+        deviceDocRef.update(updates)
+            .addOnSuccessListener {
+                Log.d("TrackApps", "Estado trackApps actualizado: $status savedCount=$savedCount")
+            }
+            .addOnFailureListener { e ->
+                Log.e("TrackApps", "Error actualizando estado trackApps: ${e.message}")
             }
     }
 
