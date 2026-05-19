@@ -108,6 +108,9 @@ class RegisterActivity : AppCompatActivity() {
         supportActionBar?.hide()
 
         previewView = findViewById(R.id.previewView)
+        findViewById<TextView>(R.id.privacyPolicyLink).setOnClickListener {
+            openPrivacyPolicy()
+        }
 
         // Configurar animaciones
         val laserLine: View = findViewById(R.id.laserLine)
@@ -137,6 +140,15 @@ class RegisterActivity : AppCompatActivity() {
 
     private fun allPermissionsGranted() =
         ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED
+
+    private fun openPrivacyPolicy() {
+        val intent = Intent(Intent.ACTION_VIEW, Uri.parse(getString(R.string.privacy_policy_url)))
+        if (intent.resolveActivity(packageManager) != null) {
+            startActivity(intent)
+        } else {
+            Toast.makeText(this, getString(R.string.privacy_policy_url), Toast.LENGTH_LONG).show()
+        }
+    }
 
     private fun startCamera() {
         val cameraProviderFuture = ProcessCameraProvider.getInstance(this)

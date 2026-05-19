@@ -24,6 +24,8 @@
     <string name="disclosure_open_settings">Abrir ajustes</string>
     <string name="open_settings">Abrir ajustes</string>
     <string name="not_now">Ahora no</string>
+    <string name="privacy_policy">Política de privacidad</string>
+    <string name="privacy_policy_url">https://withu-nextou.web.app/legal/politica-de-privacidad.html</string>
     <string name="disclosure_monitoring_title">Permisos de control parental</string>
     <string name="disclosure_monitoring_message">WithU Familiar es una app de control parental. Con autorización del padre, madre o tutor legal, recopila la ubicación en segundo plano, incluso cuando la app está cerrada o no está en uso, para mostrar la ubicación del dispositivo del menor. También puede usar el micrófono para detectar una palabra de emergencia, usar la cámara para capturar fotos solicitadas por el tutor, mostrar una notificación persistente del servicio y recopilar uso de aplicaciones cuando se habilita Acceso de uso. Esta información se guarda en la cuenta familiar en Firebase y se usa solo para funciones de seguridad parental.</string>
     <string name="disclosure_qr_camera_title">Uso de cámara para configuración</string>

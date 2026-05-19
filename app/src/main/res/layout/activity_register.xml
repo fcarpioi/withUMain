@@ -220,6 +220,20 @@
 
             </LinearLayout>
 
+            <TextView
+                android:id="@+id/privacyPolicyLink"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_gravity="center"
+                android:layout_marginTop="8dp"
+                android:clickable="true"
+                android:focusable="true"
+                android:padding="12dp"
+                android:text="@string/privacy_policy"
+                android:textColor="@color/modernOrange"
+                android:textSize="14sp"
+                android:textStyle="bold" />
+
         </LinearLayout>
 
         <!-- Espacio inferior para centrar contenido -->

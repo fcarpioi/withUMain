@@ -26,6 +26,8 @@
     <string name="disclosure_open_settings">Open settings</string>
     <string name="open_settings">Open settings</string>
     <string name="not_now">Not now</string>
+    <string name="privacy_policy">Privacy Policy</string>
+    <string name="privacy_policy_url">https://withu-nextou.web.app/legal/politica-de-privacidad.html</string>
     <string name="disclosure_monitoring_title">Parental monitoring permissions</string>
     <string name="disclosure_monitoring_message">WithU Familiar is a parental control app. With the parent or legal guardian\'s authorization, it collects location data in the background, even when the app is closed or not in use, to show the child device location. It can also use the microphone to detect an emergency keyword, use the camera to capture photos requested by the guardian, show a persistent service notification, and collect app usage data when Usage Access is enabled. This information is stored in the family account in Firebase and is used only for parental safety features.</string>
     <string name="disclosure_qr_camera_title">Camera use for setup</string>

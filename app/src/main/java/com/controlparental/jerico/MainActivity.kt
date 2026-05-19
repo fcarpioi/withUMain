@@ -12,6 +12,7 @@ import android.os.Looper
 import android.provider.Settings
 import android.util.Log
 import android.widget.Button
+import android.widget.TextView
 import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
@@ -60,6 +61,9 @@ class MainActivity : AppCompatActivity() {
         hideSystemUI()
 
         auth = FirebaseAuth.getInstance()
+        findViewById<TextView>(R.id.privacyPolicyLink).setOnClickListener {
+            openPrivacyPolicy()
+        }
 
         // Verificar si el usuario está autenticado
         if (auth.currentUser != null) {
@@ -119,6 +123,15 @@ class MainActivity : AppCompatActivity() {
         )
         intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
         startActivity(intent)
+    }
+
+    private fun openPrivacyPolicy() {
+        val intent = Intent(Intent.ACTION_VIEW, Uri.parse(getString(R.string.privacy_policy_url)))
+        if (intent.resolveActivity(packageManager) != null) {
+            startActivity(intent)
+        } else {
+            Toast.makeText(this, getString(R.string.privacy_policy_url), Toast.LENGTH_LONG).show()
+        }
     }
 
     private fun openBackgroundLocationPermissionSettings() {
