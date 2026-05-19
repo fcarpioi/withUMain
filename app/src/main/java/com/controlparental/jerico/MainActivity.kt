@@ -78,7 +78,9 @@ class MainActivity : AppCompatActivity() {
         if (areCorePermissionsGranted()) {
             checkBackgroundLocationAndStartService()
         } else {
-            requestPermissionLauncher.launch(requiredRuntimePermissions())
+            ComplianceDisclosures.showCoreMonitoringDisclosureIfNeeded(this) {
+                requestPermissionLauncher.launch(requiredRuntimePermissions())
+            }
         }
     }
 
@@ -214,24 +216,14 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun showBackgroundExecutionHelpDialog() {
-        val message = """
-            Para que la app funcione en segundo plano:
-            
-            1) Entra a "Batería" o "Uso de batería".
-            2) Busca esta app.
-            3) Selecciona "Sin restricciones" / "Permitir en segundo plano".
-            4) Desactiva "Optimización de batería" para esta app.
-            5) Regresa a la app.
-        """.trimIndent()
-
         androidx.appcompat.app.AlertDialog.Builder(this)
-            .setTitle("Activar ejecución en segundo plano")
-            .setMessage(message)
+            .setTitle(R.string.background_execution_title)
+            .setMessage(R.string.background_execution_message)
             .setCancelable(false)
-            .setPositiveButton("Abrir configuración") { _, _ ->
+            .setPositiveButton(R.string.open_settings) { _, _ ->
                 openBackgroundExecutionSettings()
             }
-            .setNegativeButton("Ahora no", null)
+            .setNegativeButton(R.string.not_now, null)
             .show()
     }
 

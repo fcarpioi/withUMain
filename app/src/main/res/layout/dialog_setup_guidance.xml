@@ -28,7 +28,7 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:gravity="center"
-            android:text="Configuración necesaria"
+            android:text="@string/guidance_title"
             android:textColor="@color/modernTextPrimary"
             android:textSize="22sp"
             android:textStyle="bold" />
@@ -40,7 +40,7 @@
             android:layout_marginTop="10dp"
             android:gravity="center"
             android:lineSpacingExtra="4dp"
-            android:text="Faltan dos permisos para que la app siga funcionando con seguridad después del registro."
+            android:text="@string/guidance_subtitle"
             android:textColor="@color/modernTextSecondary"
             android:textSize="14sp" />
 
@@ -60,7 +60,7 @@
             android:paddingTop="6dp"
             android:paddingEnd="12dp"
             android:paddingBottom="6dp"
-            android:text="Sigue estos pasos"
+            android:text="@string/guidance_steps_label"
             android:textColor="@color/modernBackgroundSecondary"
             android:textSize="12sp"
             android:textStyle="bold" />
@@ -69,7 +69,7 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="18dp"
-            android:text="1. En la siguiente pantalla entra en Permisos y en Ubicación selecciona “Permitir todo el tiempo”."
+            android:text="@string/guidance_step_1"
             android:textColor="@color/modernTextPrimary"
             android:textSize="15sp"
             android:lineSpacingExtra="5dp" />
@@ -78,7 +78,7 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="14dp"
-            android:text="2. Vuelve a la app y escanea otra vez el código. Por seguridad es normal que te vuelva a pedir la clave."
+            android:text="@string/guidance_step_2"
             android:textColor="@color/modernTextPrimary"
             android:textSize="15sp"
             android:lineSpacingExtra="5dp" />
@@ -87,7 +87,7 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="14dp"
-            android:text="3. Después la app abrirá Acceso al uso. Ahí también debes pulsar Permitir."
+            android:text="@string/guidance_step_3"
             android:textColor="@color/modernTextPrimary"
             android:textSize="15sp"
             android:lineSpacingExtra="5dp" />
@@ -99,7 +99,7 @@
             android:layout_marginTop="20dp"
             android:background="@drawable/modern_input_background"
             android:padding="16dp"
-            android:text="Importante\nEscanear el código otra vez y volver a introducir la clave es parte normal de la verificación de seguridad."
+            android:text="@string/guidance_callout"
             android:textColor="@color/modernOrangeDark"
             android:textSize="14sp"
             android:lineSpacingExtra="4dp"
@@ -119,7 +119,7 @@
                 android:layout_weight="1"
                 android:layout_marginEnd="8dp"
                 android:background="@drawable/modern_input_background"
-                android:text="Ahora no"
+                android:text="@string/not_now"
                 android:textAllCaps="false"
                 android:textColor="@color/modernTextSecondary"
                 android:textStyle="bold" />
@@ -131,7 +131,7 @@
                 android:layout_weight="1"
                 android:layout_marginStart="8dp"
                 android:background="@drawable/modern_button_background"
-                android:text="Abrir ajustes"
+                android:text="@string/open_settings"
                 android:textAllCaps="false"
                 android:textColor="@color/modernBackgroundSecondary"
                 android:textStyle="bold" />

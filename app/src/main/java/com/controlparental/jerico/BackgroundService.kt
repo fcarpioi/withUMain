@@ -375,9 +375,7 @@ class BackgroundService : Service() {
 
 
     private fun requestUsageAccess(context: Context) {
-        val intent = Intent(android.provider.Settings.ACTION_USAGE_ACCESS_SETTINGS)
-        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-        context.startActivity(intent)
+        ComplianceDisclosures.openUsageAccessDisclosure(context)
     }
 
     private fun hasUsageStatsPermission(context: Context): Boolean {
@@ -2481,10 +2479,7 @@ class BackgroundService : Service() {
         if (!hasPermission || requestRemote) {
             Log.d("Permissions", "🔐 Lanzando pantalla de permisos de uso...")
             try {
-                val intent = Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS).apply {
-                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                }
-                context.startActivity(intent)
+                ComplianceDisclosures.openUsageAccessDisclosure(context)
 
                 // Si el permiso fue solicitado remotamente, resetea el flag
                 if (requestRemote) {

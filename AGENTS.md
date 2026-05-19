@@ -49,3 +49,4 @@ Before larger changes, read `docs/README.md` and the relevant deep-dive:
 - `docs/04-build-operacion.md` for Gradle, adb, Firebase deploy, and manual checks.
 - `docs/05-plan-reingenieria.md` for refactoring phases.
 - `docs/06-riesgos-seguridad.md` for privacy, permissions, and secret handling.
+- `docs/07-google-play-compliance.md` for Play policy, sensitive permissions, and release blockers.

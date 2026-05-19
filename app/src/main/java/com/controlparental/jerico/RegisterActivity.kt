@@ -20,6 +20,7 @@ import android.widget.ImageView
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import androidx.camera.core.CameraSelector
+import androidx.camera.core.ExperimentalGetImage
 import androidx.camera.core.ImageAnalysis
 import androidx.camera.core.ImageProxy
 import androidx.camera.core.Preview
@@ -128,7 +129,9 @@ class RegisterActivity : AppCompatActivity() {
         if (allPermissionsGranted()) {
             startCamera()
         } else {
-            ActivityCompat.requestPermissions(this, arrayOf(Manifest.permission.CAMERA), 101)
+            ComplianceDisclosures.showQrCameraDisclosureIfNeeded(this) {
+                ActivityCompat.requestPermissions(this, arrayOf(Manifest.permission.CAMERA), 101)
+            }
         }
     }
 
@@ -165,6 +168,7 @@ class RegisterActivity : AppCompatActivity() {
         }, ContextCompat.getMainExecutor(this))
     }
 
+    @androidx.annotation.OptIn(ExperimentalGetImage::class)
     private fun processImageProxy(imageProxy: ImageProxy) {
         val mediaImage = imageProxy.image
         if (mediaImage == null) {
@@ -652,11 +656,13 @@ class RegisterActivity : AppCompatActivity() {
         }
 
         if (permissionsToRequest.isNotEmpty()) {
-            ActivityCompat.requestPermissions(
-                this,
-                permissionsToRequest.toTypedArray(),
-                servicePermissionsRequestCode
-            )
+            ComplianceDisclosures.showCoreMonitoringDisclosureIfNeeded(this) {
+                ActivityCompat.requestPermissions(
+                    this,
+                    permissionsToRequest.toTypedArray(),
+                    servicePermissionsRequestCode
+                )
+            }
             return
         }
 
@@ -770,24 +776,14 @@ class RegisterActivity : AppCompatActivity() {
     }
 
     private fun showBackgroundExecutionHelpDialog() {
-        val message = """
-            Para que la app funcione en segundo plano:
-            
-            1) Entra a "Batería" o "Uso de batería".
-            2) Busca esta app.
-            3) Selecciona "Sin restricciones" / "Permitir en segundo plano".
-            4) Desactiva "Optimización de batería" para esta app.
-            5) Regresa a la app.
-        """.trimIndent()
-
         androidx.appcompat.app.AlertDialog.Builder(this)
-            .setTitle("Activar ejecución en segundo plano")
-            .setMessage(message)
+            .setTitle(R.string.background_execution_title)
+            .setMessage(R.string.background_execution_message)
             .setCancelable(false)
-            .setPositiveButton("Abrir configuración") { _, _ ->
+            .setPositiveButton(R.string.open_settings) { _, _ ->
                 openBackgroundExecutionSettings()
             }
-            .setNegativeButton("Ahora no", null)
+            .setNegativeButton(R.string.not_now, null)
             .show()
     }
 }

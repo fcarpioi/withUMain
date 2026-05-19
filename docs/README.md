@@ -10,6 +10,7 @@ Esta carpeta contiene la reingenieria documental del proyecto Android `Jerico` /
 - [Build, pruebas y operacion](04-build-operacion.md): comandos Gradle, instalacion, diagnostico y despliegue de reglas.
 - [Plan de reingenieria](05-plan-reingenieria.md): deuda tecnica detectada y propuesta por fases.
 - [Riesgos y seguridad](06-riesgos-seguridad.md): permisos sensibles, privacidad, configuracion y controles recomendados.
+- [Google Play compliance](07-google-play-compliance.md): revision de politicas, permisos, disclosures y pendientes de Play Console.
 
 ## Lectura recomendada
 
@@ -20,6 +21,7 @@ Para entender el sistema completo, leer en este orden:
 3. `03-datos-firebase.md`
 4. `06-riesgos-seguridad.md`
 5. `05-plan-reingenieria.md`
+6. `07-google-play-compliance.md`
 
 ## Fuentes revisadas
 

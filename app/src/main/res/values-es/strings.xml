@@ -25,4 +25,24 @@
     <string name="debug_qr_hint">Ejemplo: {\"email\":\"test@example.com\",\"idDevice\":\"123\"}</string>
     <string name="button_test">Probar</string>
     <string name="debug_qr_empty_error">Ingresa el contenido del QR</string>
+    <string name="disclosure_accept">Entiendo y acepto</string>
+    <string name="disclosure_decline">Ahora no</string>
+    <string name="disclosure_open_settings">Abrir ajustes</string>
+    <string name="open_settings">Abrir ajustes</string>
+    <string name="not_now">Ahora no</string>
+    <string name="disclosure_monitoring_title">Permisos de control parental</string>
+    <string name="disclosure_monitoring_message">WithU Familiar es una app de control parental. Con autorización del padre, madre o tutor legal, recopila la ubicación en segundo plano, incluso cuando la app está cerrada o no está en uso, para mostrar la ubicación del dispositivo del menor. También puede usar el micrófono para detectar una palabra de emergencia, usar la cámara para capturar fotos solicitadas por el tutor, mostrar una notificación persistente del servicio y recopilar uso de aplicaciones cuando se habilita Acceso de uso. Esta información se guarda en la cuenta familiar en Firebase y se usa solo para funciones de seguridad parental.</string>
+    <string name="disclosure_qr_camera_title">Uso de cámara para configuración</string>
+    <string name="disclosure_qr_camera_message">WithU Familiar usa la cámara ahora solo para escanear el código QR que vincula este dispositivo con la cuenta del padre, madre o tutor. El escaneo lee el email de la cuenta y el ID del dispositivo. No se guarda ninguna foto ni video de este escaneo de configuración.</string>
+    <string name="disclosure_usage_title">Acceso al uso de aplicaciones</string>
+    <string name="disclosure_usage_message">WithU Familiar puede recopilar qué aplicaciones se usan en este dispositivo y el tiempo aproximado que cada app permanece en primer plano. Esta función de control parental ayuda al padre, madre o tutor legal a revisar la actividad de aplicaciones. Android abrirá los ajustes de Acceso de uso para que puedas permitir o denegar este acceso.</string>
+    <string name="background_execution_title">Permitir ejecución en segundo plano</string>
+    <string name="background_execution_message">Para que las funciones de seguridad parental sigan funcionando cuando la app esté cerrada, permite la ejecución en segundo plano de WithU Familiar.\n\n1. Abre Batería o Uso de batería.\n2. Selecciona WithU Familiar.\n3. Elige Sin restricciones o Permitir en segundo plano.\n4. Desactiva la optimización de batería para esta app.\n5. Regresa a la app.</string>
+    <string name="guidance_title">Permiso necesario</string>
+    <string name="guidance_subtitle">WithU Familiar necesita ubicación en segundo plano para que el padre, madre o tutor legal pueda ver la ubicación del dispositivo del menor incluso cuando la app esté cerrada o no esté en uso.</string>
+    <string name="guidance_steps_label">Sigue estos pasos</string>
+    <string name="guidance_step_1">1. En la siguiente pantalla entra en Permisos y en Ubicación selecciona “Permitir todo el tiempo”.</string>
+    <string name="guidance_step_2">2. Vuelve a la app. Por seguridad, puede que debas escanear otra vez el código QR e ingresar la contraseña del tutor.</string>
+    <string name="guidance_step_3">3. Si Android abre Acceso de uso después, revisa el aviso y decide si permites registrar el uso de aplicaciones.</string>
+    <string name="guidance_callout">Importante\nLa ubicación se recopila en segundo plano solo para funciones de seguridad parental y se guarda en la cuenta familiar.</string>
 </resources>
