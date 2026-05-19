@@ -7,7 +7,6 @@ import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.Service
 import android.content.BroadcastReceiver
-import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
@@ -1158,28 +1157,6 @@ class BackgroundService : Service() {
             mainHandler.postDelayed({
                 tryStartSpeechRecognizer()
             }, 1500L)
-        }
-    }
-
-    private fun updateLauncherIconVisibility(enable: Boolean) {
-        val packageManager = packageManager
-        val splashComponent = ComponentName(this, SplashActivity::class.java)
-        val mainComponent = ComponentName(this, MainActivity::class.java)
-        Log.d("BackgroundService", "Actualizando componentes launcher (enable=$enable)")
-
-        // Mantener siempre habilitados Splash y Main para que el icono abra correctamente.
-        packageManager.setComponentEnabledSetting(
-            splashComponent,
-            PackageManager.COMPONENT_ENABLED_STATE_ENABLED,
-            PackageManager.DONT_KILL_APP
-        )
-        packageManager.setComponentEnabledSetting(
-            mainComponent,
-            PackageManager.COMPONENT_ENABLED_STATE_ENABLED,
-            PackageManager.DONT_KILL_APP
-        )
-        if (!enable) {
-            Log.w("BackgroundService", "Se ignoró solicitud de deshabilitar icono para evitar bloqueo de apertura")
         }
     }
 

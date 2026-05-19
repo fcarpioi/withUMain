@@ -12,7 +12,7 @@
     <string name="password_cancelled">Authentication cancelled</string>
     <string name="welcome_title">Welcome</string>
     <string name="service_name">WithU Familiar</string>
-    <string name="service_status">Running</string>
+    <string name="service_status">Parental safety monitoring is active on this device</string>
     <string name="service_channel_name">WithU Familiar</string>
     <string name="button_close">Close</string>
     <string name="scan_qr_title">Scan QR Code</string>

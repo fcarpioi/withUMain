@@ -10,7 +10,7 @@
     <string name="button_cancel">Cancelar</string>
     <string name="welcome_title">Bienvenido</string>
     <string name="service_name">WithU Familiar</string>
-    <string name="service_status">En Ejecución</string>
+    <string name="service_status">Monitoreo de seguridad parental activo en este dispositivo</string>
     <string name="service_channel_name">WithU Familiar</string>
     <string name="button_close">Cerrar</string>
     <string name="scan_qr_title">Escanear Código QR</string>
