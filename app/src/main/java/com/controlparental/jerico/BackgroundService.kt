@@ -146,6 +146,13 @@ class BackgroundService : Service() {
     private val serviceStatePrefs by lazy {
         getSharedPreferences("ServiceStatePrefs", Context.MODE_PRIVATE)
     }
+    private val firestoreHeartbeatIntervalMillis = 60_000L
+    private val firestoreHeartbeatRunnable = object : Runnable {
+        override fun run() {
+            updateFirestoreHeartbeat()
+            mainHandler.postDelayed(this, firestoreHeartbeatIntervalMillis)
+        }
+    }
 
 
     override fun onCreate() {
@@ -355,6 +362,7 @@ class BackgroundService : Service() {
         }
 
         startServiceRuntimeMonitoring()
+        startFirestoreHeartbeat()
 
         return START_STICKY
     }
@@ -398,6 +406,40 @@ class BackgroundService : Service() {
             putLong("last_service_heartbeat", System.currentTimeMillis())
             putBoolean("service_running", true)
         }
+    }
+
+    private fun startFirestoreHeartbeat() {
+        mainHandler.removeCallbacks(firestoreHeartbeatRunnable)
+        updateFirestoreHeartbeat()
+        mainHandler.postDelayed(firestoreHeartbeatRunnable, firestoreHeartbeatIntervalMillis)
+    }
+
+    private fun stopFirestoreHeartbeat() {
+        mainHandler.removeCallbacks(firestoreHeartbeatRunnable)
+        val deviceContext = getCurrentDeviceContext() ?: return
+        getDeviceDocRef(deviceContext)
+            .set(
+                mapOf(
+                    "serviceOnline" to false,
+                    "lastHeartbeatAt" to Date()
+                ),
+                SetOptions.merge()
+            )
+    }
+
+    private fun updateFirestoreHeartbeat() {
+        val deviceContext = getCurrentDeviceContext() ?: return
+        getDeviceDocRef(deviceContext)
+            .set(
+                mapOf(
+                    "serviceOnline" to true,
+                    "lastHeartbeatAt" to Date()
+                ),
+                SetOptions.merge()
+            )
+            .addOnFailureListener { e ->
+                Log.e("BackgroundService", "Failed to update service heartbeat: ${e.message}")
+            }
     }
 
     private fun startServiceRuntimeMonitoring() {
@@ -2234,6 +2276,7 @@ class BackgroundService : Service() {
             putBoolean("service_running", false)
             putLong("last_service_stopped", System.currentTimeMillis())
         }
+        stopFirestoreHeartbeat()
         unregisterServiceReceiversSafely()
         userPreferencesListener?.remove()
         userPreferencesListener = null
