@@ -2,7 +2,7 @@
 
 ## Project Structure & Module Organization
 
-This is a single-module Android app. Core Kotlin source lives in `app/src/main/java/com/controlparental/jerico`, with feature subpackages such as `firebase/`, `location/`, `speech/`, `usage/`, `workers/`, and `ui/theme/`. XML layouts are in `app/src/main/res/layout`, drawables and launcher assets are under `drawable/` and `mipmap-*`, localized strings are in `values/` and `values-es/`, and raw assets are in `raw/`.
+This is a single-module Android app. Core Kotlin source lives in `app/src/main/java/com/controlparental/jerico`. The active runtime is centered on Activities, receivers, disclosure helpers, `BackgroundService`, and boot recovery. XML layouts are in `app/src/main/res/layout`, drawables and launcher assets are under `drawable/` and `mipmap-*`, localized strings are in `values/` and `values-es/`, and raw assets are in `raw/`.
 
 Unit tests belong in `app/src/test/java/...`; device tests belong in `app/src/androidTest/java/...`. Firebase configuration is at the repo root: `firebase.json`, `firestore.rules`, and `storage.rules`.
 
@@ -21,11 +21,11 @@ Use the checked-in Gradle wrapper rather than a system Gradle install.
 
 Use Kotlin with Java 17 compatibility. Follow standard Android/Kotlin style: 4-space indentation, `PascalCase` for classes and activities/services, `camelCase` for functions and properties, and uppercase snake case for constants. Keep package paths aligned with `com.controlparental.jerico`.
 
-Prefer existing patterns: Activities, Services, Receivers, WorkManager workers, Firebase manager classes, XML resources, and Compose theme files. Add user-facing text to `strings.xml` rather than hardcoding it.
+Prefer existing patterns: Activities, Services, Receivers, WorkManager workers, Firebase APIs, and XML resources. Add user-facing text to `strings.xml` rather than hardcoding it.
 
 ## Testing Guidelines
 
-Add local tests for pure Kotlin logic in `app/src/test/java` and instrumentation tests for Android framework, permissions, receivers, services, camera, or Firebase behavior in `app/src/androidTest/java`. Name test files after the class or behavior under test, for example `LocationManagerTest.kt`.
+Add local tests for pure Kotlin logic in `app/src/test/java` and instrumentation tests for Android framework, permissions, receivers, services, camera, or Firebase behavior in `app/src/androidTest/java`. Name test files after the class or behavior under test, for example `BackgroundServiceTest.kt`.
 
 Run `./gradlew test` before submitting logic changes and `./gradlew connectedAndroidTest` when behavior depends on Android APIs.
 

@@ -55,25 +55,12 @@
             android:exported="true">
         </activity>
 
-        <activity android:name="com.controlparental.jerico.PermissionRequestActivity"
-            android:theme="@style/Theme.AppCompat.Light.NoActionBar"
-            android:exported="false"/>
-
         <activity
             android:name="com.controlparental.jerico.UsageAccessDisclosureActivity"
             android:theme="@style/Theme.AppCompat.Light.Dialog.Alert"
             android:excludeFromRecents="true"
             android:noHistory="true"
             android:exported="false" />
-
-        <activity
-            android:name="com.controlparental.jerico.FrontCaptureActivity"
-            android:exported="false"
-            android:excludeFromRecents="true"
-            android:noHistory="true"
-            android:showWhenLocked="true"
-            android:turnScreenOn="true"
-            android:theme="@style/Theme.AppCompat.Light.NoActionBar" />
 
         <activity
             android:name="com.controlparental.jerico.RegisterActivity"
@@ -83,19 +70,6 @@
             android:exported="true"
             android:theme="@style/Theme.Modern">
         </activity>
-
-        <!--<activity android:name=".ScreenPermissionActivity"
-            android:theme="@android:style/Theme.Translucent.NoTitleBar.Fullscreen"
-            android:exported="true"/>
-
-        <activity android:name=".SilentCaptureActivity"
-            android:exported="false"
-            android:theme="@android:style/Theme.Translucent.NoTitleBar.Fullscreen"/>
-
-        <service
-            android:name=".ScreenProjectionService"
-            android:exported="false"
-            android:foregroundServiceType="mediaProjection" />-->
 
         <!-- Receptor de arranque -->
         <receiver

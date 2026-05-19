@@ -2,7 +2,6 @@ package com.controlparental.jerico
 
 import android.Manifest
 import android.annotation.SuppressLint
-import android.app.Activity
 import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
@@ -24,7 +23,6 @@ import android.hardware.camera2.CaptureRequest
 import android.hardware.camera2.params.OutputConfiguration
 import android.hardware.camera2.params.SessionConfiguration
 import android.media.AudioManager
-import android.media.MediaMetadataRetriever
 import android.media.ImageReader
 import android.media.MediaPlayer
 import android.media.MediaRecorder
@@ -66,10 +64,8 @@ import android.util.Size
 import androidx.core.app.ActivityCompat
 import java.util.concurrent.Executors
 import androidx.core.content.edit
-import okhttp3.*
 import android.app.AppOpsManager
 import android.app.PendingIntent
-import android.app.ActivityManager
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.graphics.Canvas
@@ -77,19 +73,12 @@ import android.graphics.ColorMatrix
 import android.graphics.ColorMatrixColorFilter
 import android.graphics.Matrix
 import android.graphics.Paint
-import androidx.work.PeriodicWorkRequestBuilder
-import androidx.work.WorkManager
-import androidx.work.Data
 import java.util.concurrent.TimeUnit
-import androidx.work.Constraints
 import android.media.AudioAttributes
-// AudioFocusRequest import eliminado
 import android.util.SparseIntArray
 import android.view.Surface
-import android.view.WindowManager
 import androidx.camera.core.CameraSelector
 import androidx.camera.core.ImageCapture
-import androidx.camera.core.ImageCaptureException
 import androidx.camera.lifecycle.ProcessCameraProvider
 
 import androidx.camera.core.*
@@ -97,8 +86,6 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.ProcessLifecycleOwner
 
 
-import com.controlparental.jerico.usage.AppUsageManager
-import com.controlparental.jerico.workers.AppUsageWorker
 import com.google.firebase.firestore.DocumentReference
 import com.google.firebase.firestore.DocumentSnapshot
 import com.google.firebase.firestore.FieldValue
@@ -131,10 +118,8 @@ class BackgroundService : Service() {
     private var audioManager: AudioManager? = null
     private lateinit var handlerThread: HandlerThread
     private var imageReader: ImageReader? = null
-    private lateinit var appUsageManager: AppUsageManager
     private var scannedDeviceId: String? = null
 
-    // Variables globales en tu Activity o Service:
     private var speechRecognizer: SpeechRecognizer? = null
     private lateinit var recognizerIntent: Intent
     private var isListening: Boolean = false
@@ -150,8 +135,6 @@ class BackgroundService : Service() {
     private val minSpeechStartIntervalMs: Long = 12_000L
     private val maxSpeechRestartDelayMs: Long = 60_000L
     private val keywordAlarmCooldownMs: Long = 90_000L
-
-    // AudioFocusRequest eliminado para evitar pitidos
 
     private lateinit var cameraExecutor: ExecutorService
     private var imageCapture: ImageCapture? = null
@@ -184,7 +167,6 @@ class BackgroundService : Service() {
         auth = FirebaseAuth.getInstance()
         storage = FirebaseStorage.getInstance()
         handler = mainHandler
-        appUsageManager = AppUsageManager(this)
         cameraExecutor = Executors.newSingleThreadExecutor()
         batteryStatusReceiver = BatteryStatusReceiver()
     }
@@ -292,65 +274,6 @@ class BackgroundService : Service() {
         )
     }
 
-    /*private fun capturarPantalla(userDocRef: DocumentReference) {
-        try {
-            val now = System.currentTimeMillis()
-            val imageName = "screenshot_$now.png"
-            val screenshotFile = File(externalCacheDir, imageName)
-
-            val windowManager = getSystemService(Context.WINDOW_SERVICE) as WindowManager
-            val display = windowManager.defaultDisplay
-            val width = display.width
-            val height = display.height
-
-            val imageBitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
-            val view = windowManager.defaultDisplay
-            val canvas = android.graphics.Canvas(imageBitmap)
-            val rootView = windowManager.defaultDisplay
-
-            // 🚨 NOTA: Esto requiere un contexto de UI como una Activity o View para funcionar correctamente
-            // En servicios no hay superficie visible. Este código no funcionará a menos que estés reflejando
-            // la pantalla o tengas permisos especiales (requiere MediaProjection API en versiones modernas).
-            // Aquí se muestra solo como referencia.
-
-            // imageBitmap.copy(...) => implementar usando MediaProjection si es necesario
-
-            val outputStream = FileOutputStream(screenshotFile)
-            imageBitmap.compress(Bitmap.CompressFormat.PNG, 100, outputStream)
-            outputStream.flush()
-            outputStream.close()
-
-            val userId = auth.currentUser?.uid ?: return
-            val fileUri = Uri.fromFile(screenshotFile)
-            val storageRef = FirebaseStorage.getInstance().reference
-                .child("screenshots/$userId/${screenshotFile.name}")
-
-            storageRef.putFile(fileUri)
-                .addOnSuccessListener {
-                    storageRef.downloadUrl.addOnSuccessListener { downloadUri ->
-                        val screenshotData = hashMapOf(
-                            "screenshotUrl" to downloadUri.toString(),
-                            "timestamp" to FieldValue.serverTimestamp()
-                        )
-                        userDocRef.collection("screenshots").add(screenshotData)
-                            .addOnSuccessListener {
-                                Log.d("Firestore", "✅ Screenshot guardado en Firestore.")
-                                userDocRef.update("takePicture", false)
-                                    .addOnSuccessListener {
-                                        Log.d("Firestore", "✅ takePicture actualizado a false.")
-                                    }
-                            }
-                    }
-                }
-                .addOnFailureListener { e ->
-                    Log.e("Screenshot", "❌ Error al subir screenshot: ${e.message}")
-                }
-
-        } catch (e: Exception) {
-            Log.e("Screenshot", "❌ Error al capturar pantalla: ${e.message}")
-        }
-    }*/
-
     private fun triggerUsageStatsManager() {
         try {
             val usm = getSystemService(Context.USAGE_STATS_SERVICE) as UsageStatsManager
@@ -386,31 +309,6 @@ class BackgroundService : Service() {
             context.packageName
         )
         return mode == AppOpsManager.MODE_ALLOWED
-    }
-
-    private fun startUsageWorker() {
-        val userId = auth.currentUser?.uid ?: return
-        val deviceId = getDeviceIdAsString() // Este debe devolver el deviceId del QR
-        val inputData = Data.Builder()
-            .putString("userId", userId)
-            .putString("deviceId", deviceId)
-            .build()
-
-        val constraints = Constraints.Builder()
-            .setRequiresDeviceIdle(true)   // Se intentará ejecutar solo cuando el dispositivo esté inactivo (API 23+)
-            .build()
-
-        val workRequest = PeriodicWorkRequestBuilder<AppUsageWorker>(30, TimeUnit.MINUTES)
-            .setConstraints(constraints)
-            .setInputData(inputData)
-            .build()
-
-        WorkManager.getInstance(this).enqueueUniquePeriodicWork(
-            "AppUsageWorker",
-            androidx.work.ExistingPeriodicWorkPolicy.KEEP,
-            workRequest
-        )
-        Log.d("AppUsageWorker", "Service AppUsageWorker")
     }
 
     companion object {
@@ -845,37 +743,6 @@ class BackgroundService : Service() {
             Log.e("BackgroundService", "SecurityException: ${e.message}")
         }
     }
-
-   /* private fun launchSilentCaptureIfPermissionAvailable() {
-        val prefs = getSharedPreferences("ScreenCapturePrefs", Context.MODE_PRIVATE)
-        val resultCode = prefs.getInt("resultCode", -1)
-        val projectionIntentData = prefs.getString("projectionIntentData", null)
-
-        if (resultCode == Activity.RESULT_OK && projectionIntentData != null) {
-            try {
-                val projectionIntent = Intent.parseUri(projectionIntentData, 0)
-
-                val intent = Intent(this, SilentCaptureActivity::class.java).apply {
-                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                    putExtra("resultCode", resultCode)
-                    putExtra("projectionData", projectionIntent)
-                }
-
-                Log.d("Capture", "🚀 Lanzando SilentCaptureActivity")
-                startActivity(intent)
-            } catch (e: Exception) {
-                Log.e("Capture", "❌ Error al parsear projection intent", e)
-            }
-        } else {
-            Log.w("Capture", "⚠️ No hay permiso guardado, lanzando ScreenPermissionActivity...")
-
-            // Lanza la ScreenPermissionActivity solo si aún no se ha solicitado o guardado correctamente
-            val intent = Intent(this, ScreenPermissionActivity::class.java).apply {
-                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-            }
-            startActivity(intent)
-        }
-    }*/
 
     private var lastUpdateTimestamp: Long = 0
 
@@ -1739,58 +1606,6 @@ class BackgroundService : Service() {
         }
     }
 
-   /* fun takePhotoAndUpload() {
-        val userId = auth.currentUser?.uid ?: return
-
-        val photoFile = File(externalCacheDir, "${System.currentTimeMillis()}.jpg")
-        val outputOptions = ImageCapture.OutputFileOptions.Builder(photoFile).build()
-
-        imageCapture?.takePicture(outputOptions, cameraExecutor,
-            object : ImageCapture.OnImageSavedCallback {
-                override fun onImageSaved(outputFileResults: ImageCapture.OutputFileResults) {
-                    Log.d("CameraX", "Foto guardada en: ${photoFile.absolutePath}")
-
-                    val bytes = photoFile.readBytes()
-                    uploadPhotoToFirebase(bytes) // 🚀 Subir la foto a Firebase
-                }
-
-                override fun onError(exception: ImageCaptureException) {
-                    Log.e("CameraX", "Error al tomar la foto: ${exception.message}")
-                }
-            }
-        )
-    }
-
-
-    private fun closeCamera() {
-        try {
-            cameraDevice?.close()
-            cameraDevice = null
-            Log.d("CameraDebug", "Cámara cerrada correctamente.")
-        } catch (e: Exception) {
-            Log.e("CameraError", "Error al cerrar la cámara: ${e.message}")
-        }
-    }*/
-
-
-    /**
-     * ✅ Función para cerrar la cámara correctamente y evitar que la app crashee
-     */
-   /* private fun closeCamera() {
-        try {
-            cameraCaptureSession?.close()
-            cameraCaptureSession = null
-            cameraDevice?.close()
-            cameraDevice = null
-            imageReader?.close()
-            imageReader = null
-
-            Log.d("CameraDebug", "Cámara cerrada correctamente")
-        } catch (e: Exception) {
-            Log.e("CameraError", "Error al cerrar la cámara: ${e.message}")
-        }
-    }*/
-
     private fun getPhotoFilePath(): String {
         val context = applicationContext
         val photoDirectory = File(context.getExternalFilesDir(Environment.DIRECTORY_PICTURES), "MyAppPhotos")
@@ -1815,14 +1630,6 @@ class BackgroundService : Service() {
         val metadata = StorageMetadata.Builder()
             .setContentType("image/jpeg")
             .build()
-        val debugCopy = File(file.parentFile, "last_capture_service.jpg")
-        try {
-            file.copyTo(debugCopy, overwrite = true)
-            Log.d("CameraDebug", "Debug local copy saved: ${debugCopy.absolutePath} (${debugCopy.length()} bytes)")
-        } catch (e: Exception) {
-            Log.e("CameraDebug", "Failed to save debug local copy: ${e.message}")
-        }
-
         storageRef.putFile(Uri.fromFile(file), metadata)
             .addOnSuccessListener {
                 storageRef.downloadUrl.addOnSuccessListener { uri ->
@@ -2296,58 +2103,6 @@ class BackgroundService : Service() {
             }
     }
 
-    private val client = OkHttpClient()
-
-    /*  fun sendPushNotification(token: String, title: String, message: String) {
-        val fcmServerKey = "TU_CLAVE_SECRETA_DE_FCM"  // 🔥 Cambia esto por tu Server Key de Firebase
-
-        val json = JSONObject()
-        val notification = JSONObject()
-        val data = JSONObject()
-
-        try {
-            notification.put("title", title)
-            notification.put("body", message)
-            notification.put("sound", "default")  // Sonido de notificación
-
-            data.put("click_action", "FLUTTER_NOTIFICATION_CLICK")
-            data.put("type", "ALERT")
-
-            json.put("to", token)
-            json.put("notification", notification)
-            json.put("data", data)
-
-        } catch (e: Exception) {
-            Log.e("FCM", "Error creando JSON: ${e.message}")
-        }
-
-        val requestBody = RequestBody.create(
-            "application/json; charset=utf-8".toMediaTypeOrNull(),
-            json.toString()
-        )
-
-        val request = Request.Builder()
-            .url("https://fcm.googleapis.com/fcm/send")
-            .post(requestBody)
-            .addHeader("Authorization", "key=$fcmServerKey")  // 🔥 Token del servidor FCM
-            .addHeader("Content-Type", "application/json")
-            .build()
-
-        client.newCall(request).enqueue(object : Callback {
-            override fun onFailure(call: Call, e: IOException) {
-                Log.e("FCM", "Error enviando notificación: ${e.message}")
-            }
-
-            override fun onResponse(call: Call, response: Response) {
-                if (response.isSuccessful) {
-                    Log.d("FCM", "Notificación enviada exitosamente")
-                } else {
-                    Log.e("FCM", "Error en la respuesta de FCM: ${response.message}")
-                }
-            }
-        })
-    }*/
-
     private fun containsKeyword(text: String): Boolean {
         // val keywords = listOf("ayuda", "emergencia", "socorro", "help") // 🔍 Lista de palabras clave a detectar
         val keywords = listOf("ayuda") // 🔍 Lista de palabras clave a detectar
@@ -2377,59 +2132,6 @@ class BackgroundService : Service() {
             .addOnFailureListener { e ->
                 Log.e("FCM", "Error obteniendo tokens FCM: ${e.message}")
                 callback(null)
-            }
-    }
-
-    private lateinit var wakeLock: PowerManager.WakeLock
-
-    private fun acquireWakeLock() {
-        val powerManager = getSystemService(Context.POWER_SERVICE) as PowerManager
-        wakeLock = powerManager.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "MyApp::SpeechRecognizerWakeLock")
-        wakeLock.acquire(10 * 60 * 1000L /*10 minutos*/)
-    }
-
-    private fun uploadUsageStats() {
-        val stats = appUsageManager.getAppUsageStats() ?: return
-        val deviceContext = getCurrentDeviceContext() ?: return
-        val usageRootRef = getUsageRootRef(deviceContext)
-
-        val pm = applicationContext.packageManager
-        val minForegroundMillis = 5 * 60 * 1000L // 5 minutos
-        val filteredStats = stats.filter { it.totalTimeInForeground >= minForegroundMillis }
-
-        for (usage in filteredStats) {
-            try {
-                if (isSystemPackage(pm, usage.packageName)) {
-                    Log.d("AppUsageUpload", "Skipping system app: ${usage.packageName}")
-                    continue
-                }
-
-                val packageId = resolvePackageId(usage.packageName)
-                val packageUsageRef = usageRootRef.document(packageId).collection("stats")
-                persistUsageData(
-                    targetRef = packageUsageRef.document("usageData"),
-                    usage = usage,
-                    logTag = "AppUsageUpload",
-                    successPrefix = "Uploaded usage for package"
-                )
-            } catch (e: PackageManager.NameNotFoundException) {
-                Log.e("AppUsageUpload", "Package not found: ${usage.packageName}")
-            }
-        }
-    }
-
-    private fun persistUsageData(
-        targetRef: DocumentReference,
-        usage: UsageStats,
-        logTag: String,
-        successPrefix: String
-    ) {
-        targetRef.set(buildUsageData(usage), SetOptions.merge())
-            .addOnSuccessListener {
-                Log.d(logTag, "$successPrefix: ${usage.packageName}")
-            }
-            .addOnFailureListener { e ->
-                Log.e(logTag, "Failed to persist usage for ${usage.packageName}: ${e.message}")
             }
     }
 
@@ -2535,11 +2237,6 @@ class BackgroundService : Service() {
             0
         )
         stopBackgroundThread()
-
-        // 🔋 Liberar WakeLock si estaba activo
-        if (::wakeLock.isInitialized && wakeLock.isHeld) {
-            wakeLock.release()
-        }
 
         // 🎙️ Destruir `SpeechRecognizer` solo si estaba inicializado
         releaseSpeechRecognizer(cancelFirst = false)

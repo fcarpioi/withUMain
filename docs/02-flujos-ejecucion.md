@@ -20,7 +20,7 @@
 5. Guarda `idDevice` y `email` en `UserPrefs`.
 6. Solicita permisos de servicio y arranca `BackgroundService`.
 
-Campos iniciales del dispositivo: `deviceId`, `deviceName`, `localDeviceId`, `lastCoordinate`, `locationUpdateInterval`, `recordingEnabled`, `trackingEnabled`, `battery`, `sound`, `takePhoto`, `trackApps`, `takePicture`, `requestUsagePermission`, `from`, `to` y `linkedAt`.
+Campos iniciales del dispositivo: `deviceId`, `deviceName`, `localDeviceId`, `lastCoordinate`, `locationUpdateInterval`, `recordingEnabled`, `trackingEnabled`, `battery`, `sound`, `takePhoto`, `trackApps`, `requestUsagePermission`, `from`, `to` y `linkedAt`.
 
 ## Servicio en segundo plano
 

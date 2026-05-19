@@ -23,7 +23,7 @@ Campos relevantes de `users/{userId}/devices/{deviceId}`:
 
 - Identidad: `deviceId`, `deviceName`, `localDeviceId`, `isDefault`.
 - Estado: `battery`, `lastCoordinate`, `lastTimeStamp`, `linkedAt`, `from`, `to`.
-- Control remoto: `trackingEnabled`, `recordingEnabled`, `takePhoto`, `takePicture`, `sound`, `trackApps`, `requestUsagePermission`.
+- Control remoto: `trackingEnabled`, `recordingEnabled`, `takePhoto`, `sound`, `trackApps`, `requestUsagePermission`.
 - Configuracion: `locationUpdateInterval`.
 
 Colecciones legacy:

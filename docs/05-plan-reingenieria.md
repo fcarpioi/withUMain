@@ -4,7 +4,7 @@
 
 El proyecto funciona como una app Android con servicio foreground centralizado, pero `BackgroundService.kt` concentra demasiadas responsabilidades: ubicacion, camara, audio, alarmas, preferencias remotas, subida de archivos, uso de apps, boot recovery y diagnostico. Esto dificulta pruebas, permisos granulares y mantenimiento.
 
-Tambien hay componentes duplicados o parcialmente legacy: `ForegroundService`, `LocationForegroundService`, `LocationManager`, `FirebaseManager`, `ScreenProjectionService`, `SilentCaptureActivity` y flujos de captura que no siempre estan conectados en el manifest activo.
+Los componentes legacy no conectados al flujo activo fueron retirados. La deuda principal restante es que `BackgroundService.kt` todavia concentra demasiadas responsabilidades.
 
 ## Objetivo tecnico
 
@@ -14,7 +14,7 @@ Separar responsabilidades sin cambiar comportamiento observable. Cada capability
 
 - Congelar comportamiento actual con pruebas manuales documentadas en `04-build-operacion.md`.
 - Crear tests unitarios para validacion de QR/email y construccion de datos de dispositivo.
-- Eliminar secretos placeholder como `TU_CLAVE_SECRETA_DE_FCM` del cliente y mover notificaciones push a backend.
+- Mantener cualquier envio push en backend o Cloud Functions; no introducir claves de servidor en el cliente Android.
 - Revisar `historydevices` y `subscriptions` en reglas Firebase.
 
 ## Fase 2: extraccion de modulos internos
@@ -43,7 +43,6 @@ Extraer desde `BackgroundService`:
 
 ## Fase 5: limpieza
 
-- Decidir si `ForegroundService` y `LocationForegroundService` siguen vivos o son reemplazados.
-- Eliminar clases comentadas/no registradas si no forman parte del producto.
+- Mantener fuera del build clases comentadas/no registradas si no forman parte del producto.
 - Reducir logs sensibles y normalizar tags.
 - Documentar releases, ambientes Firebase y signing.

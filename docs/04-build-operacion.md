@@ -34,7 +34,7 @@ Para pruebas manuales, compilar debug e instalar en un dispositivo con permisos 
 ```bash
 ./gradlew :app:assembleDebug
 adb install -r app/build/outputs/apk/debug/app-debug.apk
-adb logcat | rg "WithUBoot|BackgroundService|QRCodeDebug|AppUsageWorker"
+adb logcat | rg "WithUBoot|BackgroundService|QRCodeDebug|TrackApps"
 ```
 
 `BootDiagnostics.snapshot(context)` aparece en logs de `MainActivity` y `RegisterActivity`, y ayuda a verificar receptor de arranque, inicio de servicio, worker y errores.

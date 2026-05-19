@@ -426,9 +426,6 @@ class RegisterActivity : AppCompatActivity() {
         if (!existingDocument.contains("trackApps")) {
             deviceData["trackApps"] = false
         }
-        if (!existingDocument.contains("takePicture")) {
-            deviceData["takePicture"] = false
-        }
         if (!existingDocument.contains("requestUsagePermission")) {
             deviceData["requestUsagePermission"] = false
         }
@@ -477,7 +474,6 @@ class RegisterActivity : AppCompatActivity() {
             "from" to today,
             "localDeviceId" to localDeviceId,
             "trackApps" to false,
-            "takePicture" to false,
             "requestUsagePermission" to false,
             "linkedAt" to today,
         )

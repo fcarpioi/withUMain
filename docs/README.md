@@ -25,4 +25,4 @@ Para entender el sistema completo, leer en este orden:
 
 ## Fuentes revisadas
 
-La documentacion se basa en `app/build.gradle`, `settings.gradle.kts`, `AndroidManifest.xml`, `BackgroundService.kt`, `RegisterActivity.kt`, `MainActivity.kt`, `BootReceiver.kt`, `BackgroundServiceWorker.kt`, `AppUsageWorker.kt`, `FirebaseManager.kt`, `LocationManager.kt`, `firestore.rules` y `storage.rules`.
+La documentacion se basa en `app/build.gradle`, `settings.gradle.kts`, `AndroidManifest.xml`, `BackgroundService.kt`, `RegisterActivity.kt`, `MainActivity.kt`, `BootReceiver.kt`, `BackgroundServiceWorker.kt`, `ComplianceDisclosures.kt`, `firestore.rules` y `storage.rules`.
