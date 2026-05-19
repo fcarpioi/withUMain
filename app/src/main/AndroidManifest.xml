@@ -32,6 +32,10 @@
         android:supportsRtl="true"
         android:theme="@style/Theme.SimulatePhoneOff">
 
+        <meta-data
+            android:name="isMonitoringTool"
+            android:value="child_monitoring" />
+
         <!-- Splash -->
         <activity
             android:name="com.controlparental.jerico.SplashActivity"
