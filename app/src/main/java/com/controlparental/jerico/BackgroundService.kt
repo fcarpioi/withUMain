@@ -719,6 +719,7 @@ class BackgroundService : Service() {
     }
 
     private fun startLocationUpdates() {
+        lastUpdateTimestamp = 0L
         val locationRequest = LocationRequest.Builder(Priority.PRIORITY_HIGH_ACCURACY, locationUpdateInterval)
             .setMinUpdateIntervalMillis(locationUpdateInterval)
             .build()
@@ -735,6 +736,18 @@ class BackgroundService : Service() {
 
         try {
             if (checkPermissions()) {
+                fusedLocationClient.getCurrentLocation(Priority.PRIORITY_HIGH_ACCURACY, null)
+                    .addOnSuccessListener { location ->
+                        if (location != null) {
+                            Log.d("BackgroundService", "Immediate location: ${location.latitude}, ${location.longitude}")
+                            sendLocationToFirestore(location.latitude, location.longitude)
+                        } else {
+                            Log.d("BackgroundService", "Immediate location unavailable; waiting for updates")
+                        }
+                    }
+                    .addOnFailureListener { e ->
+                        Log.e("BackgroundService", "Immediate location failed: ${e.message}")
+                    }
                 fusedLocationClient.requestLocationUpdates(locationRequest, callback, null)
             } else {
                 Log.e("BackgroundService", "Location permission not granted")
