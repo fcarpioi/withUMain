@@ -14,7 +14,6 @@ Configuracion principal:
 
 ## Estructura
 
-- `app/src/main/java/com/controlparental/jerico/`: Activities, services, receivers y utilidades principales.
 - `app/src/main/java/com/controlparental/jerico/`: Activities, services, receivers, disclosures y utilidades activas.
 - `app/src/main/res/layout/`: pantallas y dialogos XML.
 - `app/src/main/res/values*`: strings, colores, estilos y temas.
@@ -25,10 +24,15 @@ Configuracion principal:
 - `SplashActivity`: pantalla inicial y redireccion a `MainActivity`.
 - `MainActivity`: valida sesion Firebase, solicita permisos base e inicia `BackgroundService`.
 - `RegisterActivity`: escanea QR con ML Kit, autentica por email/password, vincula `idDevice` y arranca el servicio.
-- `BackgroundService`: servicio foreground central. Gestiona ubicacion, bateria, grabacion, fotos, alarma, uso de apps, preferencias remotas y heartbeat local.
+- `BackgroundService`: servicio foreground central. Gestiona ubicacion, bateria, grabacion, fotos, alarma, uso de apps, preferencias remotas, heartbeat local y heartbeat remoto para la app del padre.
 - `BootReceiver`: arranca el servicio tras `BOOT_COMPLETED` o `MY_PACKAGE_REPLACED` y agenda un worker de recuperacion.
 - `BackgroundServiceWorker`: reintenta arrancar el servicio desde WorkManager.
 - `BootDiagnostics`: registra marcas de diagnostico en `SharedPreferences`.
+- `ComplianceDisclosures`: centraliza los avisos prominentes antes de solicitar permisos o capacidades sensibles.
+
+## Integracion externa
+
+La app del padre vive en `/Users/fernandocarpio/AndroidStudioProjects/with_u` y consume el documento `users/{uid}/devices/{deviceId}` para activar comandos y mostrar estado. La app del menor publica `serviceOnline` y `lastHeartbeatAt`; la app del padre usa esos campos para advertir si el servicio del menor no esta activo o no reporta heartbeat reciente.
 
 ## Dependencias relevantes
 

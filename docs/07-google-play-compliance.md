@@ -1,6 +1,6 @@
 # Google Play Compliance Review
 
-Fecha de revision: 2026-05-19.
+Fecha de revision: 2026-05-20.
 
 ## Estado del APK
 
@@ -9,6 +9,7 @@ Fecha de revision: 2026-05-19.
 - `minSdk 29`: compatible con Android 10 o superior.
 - `./gradlew :app:compileDebugKotlin`: aprobado.
 - `./gradlew :app:lintDebug`: aprobado.
+- `./gradlew :app:bundleRelease`: genera AAB firmado en `app/build/outputs/bundle/release/app-release.aab`.
 
 ## Cambios aplicados
 
@@ -29,10 +30,14 @@ Fecha de revision: 2026-05-19.
   - Ubicacion en segundo plano, microfono, camara remota, notificacion persistente y uso de apps.
   - Acceso de uso de aplicaciones antes de abrir ajustes.
 - Se movieron textos hardcoded de permisos a `strings.xml` y `values-es/strings.xml`.
+- Se agrego enlace visible a politica de privacidad en pantallas de inicio/vinculacion.
+- Se renombro el tema de background a `Theme.WithUBackground` para evitar lenguaje que sugiera ocultamiento.
+- Se aclaro la notificacion del servicio para indicar monitoreo parental activo.
+- Se agrego heartbeat remoto (`serviceOnline`, `lastHeartbeatAt`) para que la app del padre pueda advertir si la app del menor no esta funcionando.
 
 ## Requisitos de Play Console pendientes fuera del codigo
 
-- Publicar una politica de privacidad accesible en Play Console y dentro/listado de la app.
+- Confirmar en Play Console la politica de privacidad publicada: `https://withu-nextou.web.app/legal/politica-de-privacidad.html`.
 - Completar Data Safety declarando ubicacion, microfono, camara, actividad de apps, archivos subidos, identificadores y uso de Firebase.
 - Completar Permissions Declaration Form para `ACCESS_BACKGROUND_LOCATION`.
 - Adjuntar video de 30 segundos o menos que muestre:
@@ -40,6 +45,7 @@ Fecha de revision: 2026-05-19.
   - solicitud de permiso runtime;
   - activacion de la funcion principal de ubicacion en segundo plano.
 - Si la app se publica para menores o familias, revisar Google Play Families Policy y clasificacion de contenido.
+- Subir a prueba interna el AAB firmado y revisar Pre-launch report antes de produccion.
 
 ## Riesgos residuales
 
@@ -47,6 +53,7 @@ Fecha de revision: 2026-05-19.
 - Las funciones de camara/audio remotas deben estar justificadas como seguridad parental y descritas en la politica de privacidad.
 - El envio FCM no debe usar claves de servidor embebidas en el APK; cualquier envio push debe hacerse desde backend o Cloud Functions.
 - Las reglas Firestore actuales tienen rutas abiertas para `historydevices` y `subscriptions`; antes de produccion deben cerrarse o justificarse.
+- La app del padre debe mantener mensajes claros al activar rastreo, fotos, audio o uso de apps, porque esos comandos disparan funciones sensibles en el dispositivo del menor.
 
 ## Fuentes oficiales revisadas
 

@@ -22,9 +22,11 @@ users/{userId}
 Campos relevantes de `users/{userId}/devices/{deviceId}`:
 
 - Identidad: `deviceId`, `deviceName`, `localDeviceId`, `isDefault`.
-- Estado: `battery`, `lastCoordinate`, `lastTimeStamp`, `linkedAt`, `from`, `to`.
+- Estado: `battery`, `lastCoordinate`, `lastTimeStamp`, `linkedAt`, `from`, `to`, `serviceOnline`, `lastHeartbeatAt`.
 - Control remoto: `trackingEnabled`, `recordingEnabled`, `takePhoto`, `sound`, `trackApps`, `requestUsagePermission`.
 - Configuracion: `locationUpdateInterval`.
+
+`serviceOnline` y `lastHeartbeatAt` son el contrato actual para que la app del padre detecte si el servicio del menor esta vivo. Considerar stale si `lastHeartbeatAt` supera el umbral definido por la app del padre; actualmente se usa una ventana operativa de aproximadamente 5 minutos.
 
 Colecciones legacy:
 

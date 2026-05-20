@@ -19,6 +19,7 @@ Datos generados:
 Recomendaciones:
 
 - Minimizar retencion y definir expiracion por tipo de dato.
+- Mantener una politica de privacidad visible dentro de la app y en Play Console: `https://withu-nextou.web.app/legal/politica-de-privacidad.html`.
 - No registrar emails, passwords, tokens, URLs firmadas ni rutas privadas en logs.
 - Cifrar datos locales si se guardan credenciales o identificadores persistentes.
 - Evitar subir archivos si el usuario o dispositivo no tiene suscripcion/permiso vigente.
@@ -57,3 +58,4 @@ Mantener documentado:
 - Como se revoca acceso.
 - Donde se almacenan datos y por cuanto tiempo.
 - Como se elimina un dispositivo y sus archivos en Firestore/Storage.
+- Que la notificacion foreground y los textos de disclosure expliquen que se trata de monitoreo parental visible, no una app oculta.

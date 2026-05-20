@@ -6,7 +6,7 @@
 2. `MainActivity` comprueba `FirebaseAuth.currentUser`.
 3. Si no hay usuario autenticado, abre `RegisterActivity`.
 4. Si hay usuario, solicita permisos de ubicacion, audio, camara y notificaciones segun version Android.
-5. Si los permisos criticos estan listos, inicia `BackgroundService` como foreground service.
+5. Si los permisos criticos estan listos, inicia `BackgroundService` como foreground service visible.
 6. La app verifica el heartbeat en `ServiceStatePrefs`; si el servicio responde, manda la tarea al fondo.
 
 ## Vinculacion por QR
@@ -32,11 +32,19 @@ Campos iniciales del dispositivo: `deviceId`, `deviceName`, `localDeviceId`, `la
 
 Tambien escucha cambios del documento `users/{uid}/devices/{deviceId}` para activar o desactivar funciones.
 
+Ademas publica estado remoto en Firestore:
+
+- `serviceOnline: true` mientras el servicio reporta heartbeat.
+- `lastHeartbeatAt: Date()` en cada ciclo de heartbeat.
+- `serviceOnline: false` cuando el servicio ejecuta `onDestroy`.
+
+La app del padre usa estos campos para mostrar si la app del menor esta activa. Si no hay heartbeat reciente, debe indicar al usuario que abra o active la app del menor.
+
 ## Comandos remotos por Firestore
 
 El documento del dispositivo funciona como panel de control remoto:
 
-- `trackingEnabled`: inicia o detiene ubicacion.
+- `trackingEnabled`: inicia o detiene ubicacion. Al activarse guarda una ubicacion inicial en cuanto obtiene posicion, sin esperar al siguiente intervalo.
 - `recordingEnabled`: inicia o detiene ciclos de grabacion.
 - `takePhoto`: dispara captura y subida de foto.
 - `sound`: reproduce alarma y luego resetea el campo.
@@ -50,4 +58,4 @@ El documento del dispositivo funciona como panel de control remoto:
 
 ## Capturas, audio y uso de apps
 
-Las grabaciones se guardan temporalmente en almacenamiento externo de la app y se suben a Storage. Las fotos se capturan con Camera2/CameraX y se registran en Firestore. El uso de apps requiere `PACKAGE_USAGE_STATS` y se persiste bajo la subcoleccion `usage`.
+Las grabaciones se guardan temporalmente en almacenamiento externo de la app y se suben a Storage. Las fotos se capturan con Camera2/CameraX y se registran en Firestore. El uso de apps requiere `PACKAGE_USAGE_STATS` y se persiste bajo la subcoleccion `usage`; la app conserva diagnosticos para verificar si el permiso existe y si se subieron estadisticas.

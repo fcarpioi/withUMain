@@ -50,3 +50,4 @@ Before larger changes, read `docs/README.md` and the relevant deep-dive:
 - `docs/05-plan-reingenieria.md` for refactoring phases.
 - `docs/06-riesgos-seguridad.md` for privacy, permissions, and secret handling.
 - `docs/07-google-play-compliance.md` for Play policy, sensitive permissions, and release blockers.
+- `docs/08-integracion-app-padre.md` for the parent app contract, hosting, heartbeat, and cross-app validation.
