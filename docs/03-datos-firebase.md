@@ -11,6 +11,7 @@ users/{userId}
     recordings/{recordingId}
     photos/{photoId}
     screenshots/{screenshotId}
+    securityEvents/{eventId}
     usage/{packageId}
       stats/usageData
   notifications/{notificationId}
@@ -25,6 +26,14 @@ Campos relevantes de `users/{userId}/devices/{deviceId}`:
 - Estado: `battery`, `lastCoordinate`, `lastTimeStamp`, `linkedAt`, `from`, `to`, `serviceOnline`, `lastHeartbeatAt`.
 - Control remoto: `trackingEnabled`, `recordingEnabled`, `takePhoto`, `sound`, `trackApps`, `requestUsagePermission`.
 - Configuracion: `locationUpdateInterval`.
+- Alertas de movimiento: `fallDetectionEnabled`, `snatchDetectionEnabled`, `motionAlertCooldownSeconds`, `lastSecurityEventType`, `lastSecurityEventAt`, `lastSecurityEventSeverity`.
+
+`securityEvents/{eventId}` registra eventos detectados por acelerometro:
+
+- `type`: `fall_detected` o `possible_snatch`.
+- `severity`, `deviceName`, `accelerationG`, `jerkG`, `timestamp`, `timestampClient`, `timestampMs`.
+
+Las alertas tambien crean documentos en `users/{userId}/notifications/{notificationId}` con `eventType`, `title`, `message` y `pushStatus: pending`. El envio push debe resolverlo backend/Cloud Functions leyendo los tokens del padre en `users/{userId}/tokens`.
 
 `serviceOnline` y `lastHeartbeatAt` son el contrato actual para que la app del padre detecte si el servicio del menor esta vivo. Considerar stale si `lastHeartbeatAt` supera el umbral definido por la app del padre; actualmente se usa una ventana operativa de aproximadamente 5 minutos.
 

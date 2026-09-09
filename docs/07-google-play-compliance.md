@@ -1,12 +1,16 @@
 # Google Play Compliance Review
 
-Fecha de revision: 2026-05-20.
+Fecha de revision: 2026-09-02.
 
 ## Estado del APK
 
-- `targetSdk 35`: cumple el requisito vigente de Google Play para nuevas apps y actualizaciones, que exige Android 15/API 35 o superior desde el 31 de agosto de 2025.
-- `compileSdk 36`: el proyecto ya compila contra SDK 36. Android 16/API 36 debe probarse en dispositivo o emulador Android 16 antes de subir a produccion.
+- `targetSdk 36`: cumple el requisito de Google Play vigente desde el 31 de agosto de 2026 para actualizaciones orientadas a Android 16/API 36 o superior.
+- `compileSdk 36`: el proyecto compila contra SDK 36. Android 16/API 36 debe probarse en dispositivo o emulador Android 16 antes de subir a produccion.
 - `minSdk 29`: compatible con Android 10 o superior.
+- `versionCode 13`, `versionName 1.0.13`: incremento necesario porque Play Console ya tiene usados codigos de version anteriores.
+- Release usa `minifyEnabled true` y `shrinkResources true` para activar R8, reducir codigo no usado y mejorar la categoria de ofuscacion de Google Play.
+- Se quitaron restricciones de orientacion fija y se habilito `resizeableActivity` para compatibilidad con pantallas grandes.
+- Se actualizo la gestion inmersiva a `WindowCompat`/`WindowInsetsControllerCompat` y se retiraron parametros antiguos de color de barra del sistema en estilos.
 - `./gradlew :app:compileDebugKotlin`: aprobado.
 - `./gradlew :app:lintDebug`: aprobado.
 - `./gradlew :app:bundleRelease`: genera AAB firmado en `app/build/outputs/bundle/release/app-release.aab`.
@@ -57,7 +61,7 @@ Fecha de revision: 2026-05-20.
 
 ## Fuentes oficiales revisadas
 
-- Google Play target API level requirements: apps nuevas/updates deben apuntar a API 35+ desde 2025-08-31.
+- Google Play target API level requirements: updates deben apuntar a API 36+ desde 2026-08-31.
 - Google Play prominent disclosure and consent: disclosure dentro de la app antes de permisos/capacidades sensibles.
 - Google Play background location guidance: disclosure debe incluir “location” y “background” / “when the app is closed” / equivalente.
 - Google Play photo/video permissions policy: evitar `READ_MEDIA_IMAGES` y `READ_MEDIA_VIDEO` si no hay necesidad principal de acceso persistente a galeria.

@@ -29,6 +29,7 @@
         android:icon="@mipmap/ic_launcher"
         android:label="@string/app_name"
         android:roundIcon="@mipmap/ic_launcher_round"
+        android:resizeableActivity="true"
         android:supportsRtl="true"
         android:theme="@style/Theme.WithUBackground">
 
@@ -39,8 +40,7 @@
         <!-- Splash -->
         <activity
             android:name="com.controlparental.jerico.SplashActivity"
-            tools:ignore="LockedOrientationActivity,DiscouragedApi"
-            android:screenOrientation="portrait"
+            tools:ignore="DiscouragedApi"
             android:theme="@style/Theme.SplashScreen"
             android:exported="true">
             <intent-filter>
@@ -52,8 +52,7 @@
         <!-- Actividad principal -->
         <activity
             android:name="com.controlparental.jerico.MainActivity"
-            tools:ignore="LockedOrientationActivity,DiscouragedApi"
-            android:screenOrientation="portrait"
+            tools:ignore="DiscouragedApi"
             android:windowSoftInputMode="stateAlwaysHidden"
             android:theme="@style/Theme.MyApp.NoActionBar"
             android:exported="true">
@@ -68,8 +67,7 @@
 
         <activity
             android:name="com.controlparental.jerico.RegisterActivity"
-            tools:ignore="LockedOrientationActivity,DiscouragedApi"
-            android:screenOrientation="portrait"
+            tools:ignore="DiscouragedApi"
             android:excludeFromRecents="true"
             android:exported="true"
             android:theme="@style/Theme.Modern">

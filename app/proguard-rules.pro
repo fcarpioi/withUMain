@@ -20,14 +20,20 @@
 # hide the original source file name.
 #-renamesourcefileattribute source
 
-# Mantener clases de Google Play Services y Firebase
--keep class com.google.android.gms.** { *; }
--keep class com.google.firebase.** { *; }
-
 # Evitar advertencias relacionadas con las bibliotecas de Google Play Services y Firebase
 -dontwarn com.google.android.gms.**
 -dontwarn com.google.firebase.**
 
--keep class android.hardware.camera2.** { *; }
--keep class android.hardware.camera.** { *; }
--keep class android.media.ImageReader { *; }
+# Mantener atributos usados por librerias Android/Firebase para anotaciones y generics.
+-keepattributes Signature,*Annotation*
+
+# Mantener constructores de Activities, Services, Receivers y Workers declarados por framework.
+-keep public class com.controlparental.jerico.*Activity
+-keep public class com.controlparental.jerico.*Service
+-keep public class com.controlparental.jerico.*Receiver
+-keep public class com.controlparental.jerico.*Worker
+
+# Mantener helpers accedidos desde layouts XML o callbacks Android por nombre.
+-keepclassmembers class com.controlparental.jerico.** {
+    public void *(android.view.View);
+}

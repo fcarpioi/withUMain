@@ -23,6 +23,11 @@ local.properties
 keystore.properties
 *.keystore
 *.jks
+play-upload-key-reset/
+
+# Dependencias locales
+node_modules/
+functions/node_modules/
 
 # Archivos temporales
 *.tmp

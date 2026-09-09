@@ -2,6 +2,10 @@
     <string name="app_name">WithU Familiar</string>
     <string name="slogan">I\'m with you, I won\'t leave you</string>
     <string name="alert_message">🚨 Alert activated from device %1$s</string>
+    <string name="motion_alert_title">Security alert</string>
+    <string name="motion_alert_message">Possible security event detected on device %1$s</string>
+    <string name="fall_alert_message">Possible fall detected on device %1$s. Monitoring was activated automatically.</string>
+    <string name="snatch_alert_message">Possible forced phone snatch detected on device %1$s. Monitoring was activated automatically.</string>
     <string name="hold_to_activate_alarm" translatable="false">Hold to Activate Alarm</string>
     <string name="logo_description" translatable="false">WU</string>
     <string name="password_dialog_title">Parent\'s Password</string>
@@ -29,7 +33,7 @@
     <string name="privacy_policy">Privacy Policy</string>
     <string name="privacy_policy_url">https://withu-nextou.web.app/legal/politica-de-privacidad.html</string>
     <string name="disclosure_monitoring_title">Parental monitoring permissions</string>
-    <string name="disclosure_monitoring_message">WithU Familiar is a parental control app. With the parent or legal guardian\'s authorization, it collects location data in the background, even when the app is closed or not in use, to show the child device location. It can also use the microphone to detect an emergency keyword, use the camera to capture photos requested by the guardian, show a persistent service notification, and collect app usage data when Usage Access is enabled. This information is stored in the family account in Firebase and is used only for parental safety features.</string>
+    <string name="disclosure_monitoring_message">WithU Familiar is a parental control app. With the parent or legal guardian\'s authorization, it collects location data in the background, even when the app is closed or not in use, to show the child device location. It can also use the microphone to detect an emergency keyword, use motion sensors to detect possible falls or forced phone snatches, use the camera to capture photos requested by the guardian, show a persistent service notification, and collect app usage data when Usage Access is enabled. This information is stored in the family account in Firebase and is used only for parental safety features.</string>
     <string name="disclosure_qr_camera_title">Camera use for setup</string>
     <string name="disclosure_qr_camera_message">WithU Familiar uses the camera now only to scan the QR code that links this device to the parent account. The QR scan reads the account email and device ID. No photo or video from this setup scan is saved.</string>
     <string name="disclosure_usage_title">App usage access</string>

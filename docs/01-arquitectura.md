@@ -8,7 +8,7 @@ Configuracion principal:
 
 - Namespace: `com.controlparental.jerico`
 - Application ID: `com.withu.app`
-- `compileSdk 36`, `targetSdk 35`, `minSdk 29`
+- `compileSdk 36`, `targetSdk 36`, `minSdk 29`
 - Kotlin `2.1.20`, Java/Kotlin JVM target `17`
 - Gradle Android Plugin gestionado en `gradle/libs.versions.toml`
 

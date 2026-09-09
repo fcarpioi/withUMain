@@ -142,6 +142,7 @@ class BackgroundService : Service() {
     private var isManualActivationReceiverRegistered = false
     private var isBatteryReceiverRegistered = false
     private var isScreenReceiverRegistered = false
+    private var motionThreatDetector: MotionThreatDetector? = null
     private val serviceStatePrefs by lazy {
         getSharedPreferences("ServiceStatePrefs", Context.MODE_PRIVATE)
     }
@@ -446,9 +447,28 @@ class BackgroundService : Service() {
         initializeSpeechRecognizer()
         startListeningForUserPreferences()
         startAudioMonitoring()
+        startMotionThreatMonitoring()
         mainHandler.postDelayed({
             tryStartSpeechRecognizer()
         }, 2000)
+    }
+
+    private fun startMotionThreatMonitoring() {
+        if (motionThreatDetector != null) return
+        motionThreatDetector = MotionThreatDetector(
+            context = this,
+            listener = object : MotionThreatDetector.Listener {
+                override fun onMotionThreatDetected(event: MotionThreatDetector.MotionThreatEvent) {
+                    handleMotionThreat(event)
+                }
+            }
+        ).also { detector ->
+            detector.configure(
+                fallEnabled = true,
+                snatchEnabled = true,
+                alertCooldownSeconds = 60L
+            )
+        }
     }
 
     private fun createNotification(): Notification {
@@ -561,11 +581,19 @@ class BackgroundService : Service() {
         val soundEnabled = snapshot.getBoolean("sound") ?: false
         val requestUsagePermission = snapshot.getBoolean("requestUsagePermission") ?: false
         val trackApps = snapshot.getBoolean("trackApps") ?: false
+        val fallDetectionEnabled = snapshot.getBoolean("fallDetectionEnabled") ?: true
+        val snatchDetectionEnabled = snapshot.getBoolean("snatchDetectionEnabled") ?: true
+        val motionAlertCooldownSeconds = snapshot.getLong("motionAlertCooldownSeconds") ?: 60L
         Log.d(
             "BackgroundService",
             "Prefs snapshot for ${deviceContext.deviceId}: takePhoto=$takePhoto recordingEnabled=$newRecordingEnabled trackingEnabled=$trackingEnabled"
         )
 
+        handleMotionThreatPreferences(
+            fallDetectionEnabled = fallDetectionEnabled,
+            snatchDetectionEnabled = snatchDetectionEnabled,
+            motionAlertCooldownSeconds = motionAlertCooldownSeconds
+        )
         handleTrackingPreference(trackingEnabled)
         handleRecordingPreference(newRecordingEnabled)
         handlePhotoPreference(takePhoto)
@@ -574,6 +602,18 @@ class BackgroundService : Service() {
         handleUsagePermissionPreference(requestUsagePermission, deviceDocRef)
 
         verificarPermisoDeUso(this, requestUsagePermission, deviceDocRef)
+    }
+
+    private fun handleMotionThreatPreferences(
+        fallDetectionEnabled: Boolean,
+        snatchDetectionEnabled: Boolean,
+        motionAlertCooldownSeconds: Long
+    ) {
+        motionThreatDetector?.configure(
+            fallEnabled = fallDetectionEnabled,
+            snatchEnabled = snatchDetectionEnabled,
+            alertCooldownSeconds = motionAlertCooldownSeconds
+        )
     }
 
     private fun handleTrackingPreference(trackingEnabled: Boolean) {
@@ -2091,6 +2131,100 @@ class BackgroundService : Service() {
         updateTrackingAndRecordingFlags(deviceDocRef, includeTakePhoto = true, logTag = "BackgroundService")
     }
 
+    private fun handleMotionThreat(event: MotionThreatDetector.MotionThreatEvent) {
+        val deviceContext = getCurrentDeviceContext() ?: return
+        val deviceDocRef = getDeviceDocRef(deviceContext)
+
+        deviceDocRef.get()
+            .addOnSuccessListener { document ->
+                if (!document.exists()) {
+                    Log.e("MotionThreat", "Documento del dispositivo no encontrado.")
+                    return@addOnSuccessListener
+                }
+
+                val deviceName = document.getString("deviceName") ?: "Desconocido"
+                activateAlarmFlags(deviceDocRef)
+                saveMotionThreatEvent(deviceDocRef, deviceName, event)
+                saveMotionThreatNotification(deviceContext.userId, deviceName, event)
+            }
+            .addOnFailureListener { e ->
+                Log.e("MotionThreat", "Error obteniendo dispositivo: ${e.message}")
+            }
+    }
+
+    private fun saveMotionThreatEvent(
+        deviceDocRef: DocumentReference,
+        deviceName: String,
+        event: MotionThreatDetector.MotionThreatEvent
+    ) {
+        val eventData = hashMapOf(
+            "type" to event.type,
+            "severity" to event.severity,
+            "deviceName" to deviceName,
+            "accelerationG" to event.accelerationG.toDouble(),
+            "jerkG" to event.jerkG.toDouble(),
+            "timestamp" to FieldValue.serverTimestamp(),
+            "timestampClient" to Timestamp(Date(event.timestampMs)),
+            "timestampMs" to event.timestampMs
+        )
+
+        firestore.batch()
+            .set(deviceDocRef.collection("securityEvents").document(), eventData)
+            .set(
+                deviceDocRef,
+                mapOf(
+                    "lastSecurityEventType" to event.type,
+                    "lastSecurityEventAt" to FieldValue.serverTimestamp(),
+                    "lastSecurityEventSeverity" to event.severity
+                ),
+                SetOptions.merge()
+            )
+            .commit()
+            .addOnSuccessListener {
+                Log.d("MotionThreat", "Evento de movimiento registrado: ${event.type}")
+            }
+            .addOnFailureListener { e ->
+                Log.e("MotionThreat", "Error registrando evento: ${e.message}")
+            }
+    }
+
+    private fun saveMotionThreatNotification(
+        userId: String,
+        deviceName: String,
+        event: MotionThreatDetector.MotionThreatEvent
+    ) {
+        val nowMs = System.currentTimeMillis()
+        val messageRes = when (event.type) {
+            "fall_detected" -> R.string.fall_alert_message
+            "possible_snatch" -> R.string.snatch_alert_message
+            else -> R.string.motion_alert_message
+        }
+        val notificationData = hashMapOf(
+            "senderName" to deviceName,
+            "eventType" to event.type,
+            "severity" to event.severity,
+            "title" to getString(R.string.motion_alert_title),
+            "message" to getString(messageRes, deviceName),
+            "accelerationG" to event.accelerationG.toDouble(),
+            "jerkG" to event.jerkG.toDouble(),
+            "timestamp" to FieldValue.serverTimestamp(),
+            "timestampClient" to Timestamp(Date(nowMs)),
+            "timestampMs" to nowMs,
+            "pushStatus" to "pending"
+        )
+
+        firestore.collection("users")
+            .document(userId)
+            .collection("notifications")
+            .add(notificationData)
+            .addOnSuccessListener {
+                Log.d("MotionThreat", "Notificación de movimiento registrada correctamente.")
+            }
+            .addOnFailureListener { e ->
+                Log.e("MotionThreat", "Error registrando notificación: ${e.message}")
+            }
+    }
+
     private fun updateTrackingAndRecordingFlags(
         deviceDocRef: DocumentReference,
         includeTakePhoto: Boolean,
@@ -2262,6 +2396,8 @@ class BackgroundService : Service() {
         stopRecording() // 🎤 Detener grabación si está activa
         stopListening() // 🎙️ Detener reconocimiento de voz si está activo
         stopAudioMonitoring() // 🔊 Detener monitoreo de audio
+        motionThreatDetector?.stop()
+        motionThreatDetector = null
 
         // 🔊 Restaurar sonido del sistema si se había silenciado
         audioManager?.adjustStreamVolume(

@@ -14,8 +14,6 @@ import android.provider.Settings
 import android.util.Log
 import android.view.View
 import android.view.animation.AnimationUtils
-import android.view.WindowInsets
-import android.view.WindowInsetsController
 import android.widget.ImageView
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
@@ -48,6 +46,9 @@ import android.content.SharedPreferences
 import android.widget.Button
 import android.widget.EditText
 import android.widget.TextView
+import androidx.core.view.WindowCompat
+import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.WindowInsetsControllerCompat
 
 class RegisterActivity : AppCompatActivity() {
 
@@ -60,6 +61,7 @@ class RegisterActivity : AppCompatActivity() {
     private var qrDeviceId: String? = null
     private var isProcessing = false
     private var isCameraStarted = false
+    private var isCompletingLinkedSetup = false
     private val TAG = "RegisterActivity"
     private val servicePermissionsRequestCode = 102
 
@@ -72,23 +74,20 @@ class RegisterActivity : AppCompatActivity() {
         firestore = FirebaseFirestore.getInstance()
         sharedPreferences = getSharedPreferences("UserPrefs", Context.MODE_PRIVATE)
         sharedPreferences.edit { remove("password") }
+        cameraExecutor = Executors.newSingleThreadExecutor()
+        barcodeScanner = BarcodeScanning.getClient(
+            BarcodeScannerOptions.Builder()
+                .setBarcodeFormats(Barcode.FORMAT_QR_CODE)
+                .build()
+        )
 
         val savedDeviceId = sharedPreferences.getString("idDevice", null)
 
         if (auth.currentUser != null && savedDeviceId != null) {
             qrDeviceId = savedDeviceId
             DeviceIdHolder.deviceId = qrDeviceId
-
-            // Cerrar solo si el servicio realmente arrancó.
-            if (startBackgroundService()) {
-                handleSuccessfulServiceStart()
-                return
-            }
-            Toast.makeText(
-                this,
-                "Faltan permisos para iniciar el servicio en segundo plano",
-                Toast.LENGTH_LONG
-            ).show()
+            continueLinkedSetup()
+            return
         }
 
         val logoImageView: ImageView = findViewById(R.id.roundedImageView)
@@ -121,13 +120,6 @@ class RegisterActivity : AppCompatActivity() {
 
         laserLine.startAnimation(laserAnimation)
         scanningDot.startAnimation(pulseAnimation)
-
-        cameraExecutor = Executors.newSingleThreadExecutor()
-        barcodeScanner = BarcodeScanning.getClient(
-            BarcodeScannerOptions.Builder()
-                .setBarcodeFormats(Barcode.FORMAT_QR_CODE)
-                .build()
-        )
 
         if (allPermissionsGranted()) {
             startCamera()
@@ -523,6 +515,10 @@ class RegisterActivity : AppCompatActivity() {
     override fun onResume() {
         super.onResume()
         enableFullScreenMode()
+        if (auth.currentUser != null && sharedPreferences.getString("idDevice", null) != null) {
+            continueLinkedSetup()
+            return
+        }
         if (allPermissionsGranted() && !isCameraStarted) {
             startCamera()
         }
@@ -535,18 +531,10 @@ class RegisterActivity : AppCompatActivity() {
     }
 
     private fun enableFullScreenMode() {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-            window.insetsController?.let { controller ->
-                controller.hide(WindowInsets.Type.systemBars())
-                controller.systemBarsBehavior = WindowInsetsController.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
-            }
-        } else {
-            @Suppress("DEPRECATION")
-            window.decorView.systemUiVisibility = (
-                    View.SYSTEM_UI_FLAG_FULLSCREEN or
-                            View.SYSTEM_UI_FLAG_HIDE_NAVIGATION or
-                            View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
-                    )
+        WindowCompat.setDecorFitsSystemWindows(window, false)
+        WindowInsetsControllerCompat(window, window.decorView).apply {
+            hide(WindowInsetsCompat.Type.systemBars())
+            systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
         }
     }
 
@@ -675,6 +663,64 @@ class RegisterActivity : AppCompatActivity() {
         }
 
         ensureBackgroundLocationAndStartService()
+    }
+
+    private fun continueLinkedSetup() {
+        if (isCompletingLinkedSetup) return
+        isCompletingLinkedSetup = true
+
+        val savedDeviceId = sharedPreferences.getString("idDevice", null)
+        if (savedDeviceId == null || auth.currentUser == null) {
+            isCompletingLinkedSetup = false
+            return
+        }
+
+        qrDeviceId = savedDeviceId
+        DeviceIdHolder.deviceId = savedDeviceId
+
+        if (!hasRequiredForegroundServicePermissions()) {
+            isCompletingLinkedSetup = false
+            requestServicePermissionsIfNeeded()
+            return
+        }
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q &&
+            ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_BACKGROUND_LOCATION) != PackageManager.PERMISSION_GRANTED
+        ) {
+            isCompletingLinkedSetup = false
+            showBackgroundLocationHelpDialog()
+            return
+        }
+
+        val serviceStarted = startBackgroundService()
+        isCompletingLinkedSetup = false
+        if (serviceStarted) {
+            handleSuccessfulServiceStart()
+        } else {
+            Toast.makeText(
+                this,
+                "No se pudo iniciar el servicio. Revisa los permisos de la app.",
+                Toast.LENGTH_LONG
+            ).show()
+        }
+    }
+
+    private fun hasRequiredForegroundServicePermissions(): Boolean {
+        val hasLocationPermission = ContextCompat.checkSelfPermission(
+            this,
+            Manifest.permission.ACCESS_FINE_LOCATION
+        ) == PackageManager.PERMISSION_GRANTED
+        val hasAudioPermission = ContextCompat.checkSelfPermission(
+            this,
+            Manifest.permission.RECORD_AUDIO
+        ) == PackageManager.PERMISSION_GRANTED
+        val hasNotificationsPermission = Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU ||
+            ContextCompat.checkSelfPermission(
+                this,
+                Manifest.permission.POST_NOTIFICATIONS
+            ) == PackageManager.PERMISSION_GRANTED
+
+        return hasLocationPermission && hasAudioPermission && hasNotificationsPermission
     }
 
     private fun ensureBackgroundLocationAndStartService() {

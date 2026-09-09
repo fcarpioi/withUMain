@@ -48,6 +48,12 @@ service firebase.storage {
         && request.resource.contentType.matches('audio/.*|video/.*|application/octet-stream');
     }
 
+    // APK publico de descarga desde la landing. La subida debe hacerse con CLI/Admin.
+    match /downloads/public/{fileName} {
+      allow read: if fileName.matches('(?i).+\\.apk$');
+      allow write: if false;
+    }
+
     // Denegar todo lo demás.
     match /{allPaths=**} {
       allow read, write: if false;
