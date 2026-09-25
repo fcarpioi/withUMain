@@ -7,7 +7,7 @@ Fecha de revision: 2026-09-02.
 - `targetSdk 36`: cumple el requisito de Google Play vigente desde el 31 de agosto de 2026 para actualizaciones orientadas a Android 16/API 36 o superior.
 - `compileSdk 36`: el proyecto compila contra SDK 36. Android 16/API 36 debe probarse en dispositivo o emulador Android 16 antes de subir a produccion.
 - `minSdk 29`: compatible con Android 10 o superior.
-- `versionCode 14`, `versionName 1.0.14`: incremento necesario porque Play Console ya tiene usados codigos de version anteriores.
+- `versionCode 15`, `versionName 1.0.15`: incremento necesario porque Play Console ya tiene usados codigos de version anteriores.
 - Release usa `minifyEnabled true` y `shrinkResources true` para activar R8, reducir codigo no usado y mejorar la categoria de ofuscacion de Google Play.
 - Release usa `ndk.debugSymbolLevel SYMBOL_TABLE` para generar simbolos nativos compatibles con Play Console cuando el bundle incluye librerias `.so`.
 - Se quitaron restricciones de orientacion fija y se habilito `resizeableActivity` para compatibilidad con pantallas grandes.
