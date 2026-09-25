@@ -32,6 +32,7 @@ import android.os.Bundle
 import android.os.Environment
 import android.os.Handler
 import android.os.IBinder
+import android.location.Location
 import android.os.Looper
 import android.os.PowerManager
 import android.speech.RecognitionListener
@@ -105,7 +106,8 @@ class BackgroundService : Service() {
     private lateinit var auth: FirebaseAuth
     private lateinit var storage: FirebaseStorage
     private var locationCallback: LocationCallback? = null
-    private var locationUpdateInterval: Long = 10000L // Intervalo por defecto
+    private var locationUpdateInterval: Long = MIN_LOCATION_SAVE_INTERVAL_MS
+    private var isTrackingActive = false
     private var recordingCycleDuration: Long = 60000L // 60 segundos de grabación por defecto
     private var isRecording = false
     private var recorder: MediaRecorder? = null
@@ -320,6 +322,16 @@ class BackgroundService : Service() {
 
     companion object {
         private const val NOTIFICATION_ID = 1
+
+        // Como mucho una ubicación cada 2 minutos, aunque el documento del
+        // dispositivo pida un intervalo menor (los antiguos tienen 15 s).
+        private const val MIN_LOCATION_SAVE_INTERVAL_MS = 120_000L
+        // Solo se guarda un punto nuevo si el menor se ha movido al menos esto...
+        private const val MIN_LOCATION_SAVE_DISTANCE_METERS = 50f
+        // ...o si lleva este tiempo sin guardar (punto de control estando quieto).
+        private const val STATIONARY_LOCATION_SAVE_INTERVAL_MS = 10 * 60_000L
+        // Lecturas con peor precisión no cuentan como movimiento.
+        private const val MAX_LOCATION_ACCURACY_METERS = 100f
         const val ACTION_TRIGGER_ALARM = "com.controlparental.jerico.ACTION_TRIGGER_ALARM"
         const val EXTRA_START_REASON = "com.controlparental.jerico.extra.START_REASON"
         const val START_REASON_BOOT = "boot"
@@ -575,7 +587,12 @@ class BackgroundService : Service() {
     ) {
         val trackingEnabled = snapshot.getBoolean("trackingEnabled") ?: true
         val newRecordingEnabled = snapshot.getBoolean("recordingEnabled") ?: false
-        locationUpdateInterval = snapshot.getLong("locationUpdateInterval") ?: 10000L
+        val requestedLocationInterval = snapshot.getLong("locationUpdateInterval")
+            ?: MIN_LOCATION_SAVE_INTERVAL_MS
+        val newLocationUpdateInterval =
+            requestedLocationInterval.coerceAtLeast(MIN_LOCATION_SAVE_INTERVAL_MS)
+        val locationIntervalChanged = newLocationUpdateInterval != locationUpdateInterval
+        locationUpdateInterval = newLocationUpdateInterval
         recordingCycleDuration = snapshot.getLong("recordingCycleDuration") ?: 60000L
         val takePhoto = snapshot.getBoolean("takePhoto") ?: false
         val soundEnabled = snapshot.getBoolean("sound") ?: false
@@ -594,7 +611,7 @@ class BackgroundService : Service() {
             snatchDetectionEnabled = snatchDetectionEnabled,
             motionAlertCooldownSeconds = motionAlertCooldownSeconds
         )
-        handleTrackingPreference(trackingEnabled)
+        handleTrackingPreference(trackingEnabled, locationIntervalChanged)
         handleRecordingPreference(newRecordingEnabled)
         handlePhotoPreference(takePhoto)
         handleSoundPreference(soundEnabled, deviceContext)
@@ -616,11 +633,17 @@ class BackgroundService : Service() {
         )
     }
 
-    private fun handleTrackingPreference(trackingEnabled: Boolean) {
+    private fun handleTrackingPreference(trackingEnabled: Boolean, intervalChanged: Boolean) {
+        // El snapshot llega con cada escritura del propio documento (heartbeat,
+        // batería, última ubicación). Reiniciar aquí siempre forzaba una
+        // ubicación inmediata y creaba un bucle de escrituras, así que solo se
+        // reinicia cuando cambia algo que afecta al rastreo.
         if (trackingEnabled) {
-            stopLocationUpdates()
-            startLocationUpdates()
-        } else {
+            if (!isTrackingActive || intervalChanged) {
+                stopLocationUpdates()
+                startLocationUpdates()
+            }
+        } else if (isTrackingActive) {
             stopLocationUpdates()
         }
     }
@@ -809,7 +832,7 @@ class BackgroundService : Service() {
             override fun onLocationResult(locationResult: LocationResult) {
                 for (location in locationResult.locations) {
                     Log.d("BackgroundService", "Location: ${location.latitude}, ${location.longitude}, ${locationUpdateInterval}")
-                    sendLocationToFirestore(location.latitude, location.longitude)
+                    sendLocationToFirestore(location)
                 }
             }
         }
@@ -821,7 +844,7 @@ class BackgroundService : Service() {
                     .addOnSuccessListener { location ->
                         if (location != null) {
                             Log.d("BackgroundService", "Immediate location: ${location.latitude}, ${location.longitude}")
-                            sendLocationToFirestore(location.latitude, location.longitude)
+                            sendLocationToFirestore(location)
                         } else {
                             Log.d("BackgroundService", "Immediate location unavailable; waiting for updates")
                         }
@@ -830,6 +853,7 @@ class BackgroundService : Service() {
                         Log.e("BackgroundService", "Immediate location failed: ${e.message}")
                     }
                 fusedLocationClient.requestLocationUpdates(locationRequest, callback, null)
+                isTrackingActive = true
             } else {
                 Log.e("BackgroundService", "Location permission not granted")
             }
@@ -875,59 +899,81 @@ class BackgroundService : Service() {
     private fun getUsageRootRef(deviceContext: DeviceContext) =
         getDeviceDocRef(deviceContext).collection("usage")
 
-    private fun sendLocationToFirestore(latitude: Double, longitude: Double) {
+    private var lastSavedLocation: Location? = null
+
+    private fun sendLocationToFirestore(location: Location) {
         val currentTime = System.currentTimeMillis()
+        val latitude = location.latitude
+        val longitude = location.longitude
+        val elapsedSinceLastSave = currentTime - lastUpdateTimestamp
 
-        if (currentTime - lastUpdateTimestamp >= locationUpdateInterval) {
-            lastUpdateTimestamp = currentTime
-
-            val deviceContext = getCurrentDeviceContext()
-            if (deviceContext != null) {
-                val deviceDocRef = getDeviceDocRef(deviceContext)
-
-                // Crear un objeto GeoPoint para las coordenadas
-                val geoPoint = GeoPoint(latitude, longitude)
-
-                // Obtener la fecha y hora actual
-                val timestamp = Date()
-                val locationRef = deviceDocRef.collection("locations").document()
-
-                // Guardar histórico en subcolección y snapshot en el documento principal.
-                val locationData = hashMapOf(
-                    "locationId" to locationRef.id,
-                    "location" to geoPoint,
-                    "timestamp" to timestamp,
-                    "latitude" to latitude,
-                    "longitude" to longitude
-                )
-
-                val deviceUpdates = hashMapOf(
-                    "lastCoordinate" to geoPoint as Any,
-                    "lastTimeStamp" to timestamp as Any
-                )
-
-                firestore.batch()
-                    .set(locationRef, locationData)
-                    .set(deviceDocRef, deviceUpdates, SetOptions.merge())
-                    .commit()
-                    .addOnSuccessListener {
-                        Log.d(
-                            "BackgroundService",
-                            "Location saved in devices/${deviceContext.deviceId}/locations/${locationRef.id} and device snapshot updated"
-                        )
-                    }
-                    .addOnFailureListener { e ->
-                        Log.e(
-                            "BackgroundService",
-                            "Error saving location batch for user=${deviceContext.userId} device=${deviceContext.deviceId} locationPath=${locationRef.path}: ${e.message}"
-                        )
-                    }
-
-            } else {
-                Log.e("BackgroundService", "User not authenticated")
-            }
-        } else {
+        if (elapsedSinceLastSave < locationUpdateInterval) {
             Log.d("BackgroundService", "Skipping location update, interval not reached.")
+            return
+        }
+
+        val previous = lastSavedLocation
+        val isFirstSave = lastUpdateTimestamp == 0L || previous == null
+        val stationaryCheckpointDue = elapsedSinceLastSave >= STATIONARY_LOCATION_SAVE_INTERVAL_MS
+        val isAccurate = !location.hasAccuracy() || location.accuracy <= MAX_LOCATION_ACCURACY_METERS
+        val movedEnough = previous != null && isAccurate &&
+            previous.distanceTo(location) >= MIN_LOCATION_SAVE_DISTANCE_METERS
+
+        if (!isFirstSave && !movedEnough && !stationaryCheckpointDue) {
+            Log.d("BackgroundService", "Skipping location update, device has not moved enough.")
+            return
+        }
+
+        lastUpdateTimestamp = currentTime
+        lastSavedLocation = location
+
+        val deviceContext = getCurrentDeviceContext()
+        if (deviceContext != null) {
+            val deviceDocRef = getDeviceDocRef(deviceContext)
+
+            // Crear un objeto GeoPoint para las coordenadas
+            val geoPoint = GeoPoint(latitude, longitude)
+
+            // Obtener la fecha y hora actual
+            val timestamp = Date()
+            val locationRef = deviceDocRef.collection("locations").document()
+
+            // Guardar histórico en subcolección y snapshot en el documento principal.
+            val locationData = hashMapOf(
+                "locationId" to locationRef.id,
+                "location" to geoPoint,
+                "timestamp" to timestamp,
+                "latitude" to latitude,
+                "longitude" to longitude
+            )
+            if (location.hasAccuracy()) {
+                locationData["accuracy"] = location.accuracy.toDouble()
+            }
+
+            val deviceUpdates = hashMapOf(
+                "lastCoordinate" to geoPoint as Any,
+                "lastTimeStamp" to timestamp as Any
+            )
+
+            firestore.batch()
+                .set(locationRef, locationData)
+                .set(deviceDocRef, deviceUpdates, SetOptions.merge())
+                .commit()
+                .addOnSuccessListener {
+                    Log.d(
+                        "BackgroundService",
+                        "Location saved in devices/${deviceContext.deviceId}/locations/${locationRef.id} and device snapshot updated"
+                    )
+                }
+                .addOnFailureListener { e ->
+                    Log.e(
+                        "BackgroundService",
+                        "Error saving location batch for user=${deviceContext.userId} device=${deviceContext.deviceId} locationPath=${locationRef.path}: ${e.message}"
+                    )
+                }
+
+        } else {
+            Log.e("BackgroundService", "User not authenticated")
         }
     }
 
@@ -937,6 +983,7 @@ class BackgroundService : Service() {
             locationCallback = null
             Log.d("BackgroundService", "Location updates stopped")
         }
+        isTrackingActive = false
     }
 
     private val uploadQueue = mutableListOf<File>()

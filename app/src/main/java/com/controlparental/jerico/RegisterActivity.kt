@@ -407,7 +407,7 @@ class RegisterActivity : AppCompatActivity() {
         val deviceData = hashMapOf(
             "deviceName" to Build.MODEL,
             "lastCoordinate" to GeoPoint(8.983333, -79.516667),
-            "locationUpdateInterval" to 15000,
+            "locationUpdateInterval" to 120000,
             "recordingEnabled" to false,
             "trackingEnabled" to false,
             "battery" to 0,
@@ -467,7 +467,7 @@ class RegisterActivity : AppCompatActivity() {
             "deviceId" to qrDeviceId,
             "deviceName" to Build.MODEL,
             "lastCoordinate" to GeoPoint(8.983333, -79.516667),
-            "locationUpdateInterval" to 15000,
+            "locationUpdateInterval" to 120000,
             "recordingEnabled" to false,
             "trackingEnabled" to false,
             "battery" to 0,
