@@ -17,8 +17,8 @@ android {
         applicationId "com.withu.app"
         minSdk 29
         targetSdk 36
-        versionCode 13
-        versionName "1.0.13"
+        versionCode 14
+        versionName "1.0.14"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
 
         // Configuración para habilitar la compatibilidad con Java 17
@@ -54,6 +54,9 @@ android {
         release {
             minifyEnabled true
             shrinkResources true
+            ndk {
+                debugSymbolLevel 'SYMBOL_TABLE'
+            }
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
             signingConfig signingConfigs.release
         }
