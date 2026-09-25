@@ -82,7 +82,9 @@ import androidx.camera.core.ImageCapture
 import androidx.camera.lifecycle.ProcessCameraProvider
 
 import androidx.camera.core.*
+import androidx.lifecycle.DefaultLifecycleObserver
 import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.ProcessLifecycleOwner
 
 
@@ -91,7 +93,9 @@ import com.google.firebase.firestore.DocumentSnapshot
 import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.ListenerRegistration
 import java.util.concurrent.ExecutorService
+import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
+import java.util.concurrent.atomic.AtomicReference
 import android.app.usage.UsageStatsManager
 import android.app.usage.UsageStats
 
@@ -113,6 +117,18 @@ class BackgroundService : Service() {
     private var recorder: MediaRecorder? = null
     private val mainHandler = Handler(Looper.getMainLooper())
     private lateinit var handler: Handler
+    // Evita abrir la cámara dos veces si llegan varios snapshots con takePhoto=true.
+    private val isTakingPhoto = AtomicBoolean(false)
+
+    // Tipos con los que corre el servicio en primer plano. Si arrancó en segundo
+    // plano (arranque del móvil, actualización, reinicio tras un cierre) Android
+    // solo permite ubicación; al abrir la app se amplía a cámara y micrófono.
+    private var currentForegroundTypes = 0
+    private val appVisibilityObserver = object : DefaultLifecycleObserver {
+        override fun onStart(owner: LifecycleOwner) {
+            promoteForegroundServiceTypes()
+        }
+    }
     private var filePath: String = ""
     private lateinit var batteryStatusReceiver: BatteryStatusReceiver
     private var lastBatteryPercentage: Float = -1f
@@ -161,6 +177,7 @@ class BackgroundService : Service() {
         super.onCreate()
         BootDiagnostics.markServiceCreated(this)
         Log.d("BackgroundService", "Service onCreate called")
+        ProcessLifecycleOwner.get().lifecycle.addObserver(appVisibilityObserver)
         updateServiceHeartbeat()
         initializeServiceDependencies()
         registerServiceReceivers()
@@ -322,6 +339,7 @@ class BackgroundService : Service() {
 
     companion object {
         private const val NOTIFICATION_ID = 1
+        private const val PHOTO_CAPTURE_TIMEOUT_MS = 20_000L
 
         // Como mucho una ubicación cada 2 minutos, aunque el documento del
         // dispositivo pida un intervalo menor (los antiguos tienen 15 s).
@@ -355,6 +373,7 @@ class BackgroundService : Service() {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
                 val foregroundTypes = resolveForegroundServiceTypes(startReason)
                 startForeground(NOTIFICATION_ID, notification, foregroundTypes)
+                currentForegroundTypes = foregroundTypes
                 BootDiagnostics.markServiceForegroundStarted(this, foregroundTypes)
             } else {
                 startForeground(NOTIFICATION_ID, notification)
@@ -411,6 +430,19 @@ class BackgroundService : Service() {
         }
 
         return foregroundTypes
+    }
+
+    private fun promoteForegroundServiceTypes() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q || currentForegroundTypes == 0) return
+        val foregroundTypes = resolveForegroundServiceTypes(START_REASON_APP)
+        if (foregroundTypes and currentForegroundTypes.inv() == 0) return
+        try {
+            startForeground(NOTIFICATION_ID, createNotification(), foregroundTypes)
+            currentForegroundTypes = foregroundTypes
+            Log.d("BackgroundService", "Foreground service types promoted to $foregroundTypes")
+        } catch (e: Exception) {
+            Log.e("BackgroundService", "Unable to promote foreground service types", e)
+        }
     }
 
     private fun updateServiceHeartbeat() {
@@ -1413,6 +1445,11 @@ class BackgroundService : Service() {
             return
         }
 
+        if (!isTakingPhoto.compareAndSet(false, true)) {
+            Log.w("CameraDebug", "Foto remota ya en curso; se ignora la nueva petición")
+            return
+        }
+
         try {
             val frontCameraId = cameraManager.cameraIdList.firstOrNull {
                 cameraManager.getCameraCharacteristics(it).get(CameraCharacteristics.LENS_FACING) == CameraCharacteristics.LENS_FACING_FRONT
@@ -1428,6 +1465,7 @@ class BackgroundService : Service() {
             if (cameraId == null) {
                 Log.e("CameraError", "No camera available on this device")
                 updateTakePhotoField(deviceDocRef, false)
+                isTakingPhoto.set(false)
                 return
             }
             Log.d(
@@ -1447,21 +1485,60 @@ class BackgroundService : Service() {
             Log.d("CameraDebug", "Tamaño JPEG seleccionado: ${bestSize.width}x${bestSize.height}")
 
             val imageReader = ImageReader.newInstance(bestSize.width, bestSize.height, ImageFormat.JPEG, 2)
+            // Los fotogramas de calentamiento (para que la cámara ajuste exposición y
+            // balance) van a este lector aparte y se descartan; el JPEG solo recibe
+            // la captura final. Antes el segundo fotograma de calentamiento acababa
+            // siendo la foto y salía sobreexpuesta.
+            val warmupSize = chooseWarmupSize(
+                characteristics.get(CameraCharacteristics.SCALER_STREAM_CONFIGURATION_MAP)
+                    ?.getOutputSizes(ImageFormat.YUV_420_888)
+            )
+            val warmupReader = ImageReader.newInstance(
+                warmupSize.width,
+                warmupSize.height,
+                ImageFormat.YUV_420_888,
+                2
+            )
+            warmupReader.setOnImageAvailableListener({ reader ->
+                try {
+                    reader.acquireLatestImage()?.close()
+                } catch (e: Exception) {
+                    // El lector puede estar ya cerrado al terminar la foto.
+                }
+            }, handler)
             val outputFile = File(getPhotoFilePath())
-            val pendingFramesToSkip = AtomicInteger(1)
+
+            // Cierra cámara y lector una sola vez, pase lo que pase con la captura;
+            // antes la cámara quedaba abierta tras cada foto.
+            val openedCamera = AtomicReference<CameraDevice?>(null)
+            val photoFinished = AtomicBoolean(false)
+            var photoTimeout: Runnable? = null
+            fun finishPhoto() {
+                if (!photoFinished.compareAndSet(false, true)) return
+                photoTimeout?.let { handler.removeCallbacks(it) }
+                try {
+                    openedCamera.getAndSet(null)?.close()
+                } catch (e: Exception) {
+                    Log.w("CameraDebug", "Error cerrando cámara: ${e.message}")
+                }
+                try {
+                    imageReader.close()
+                    warmupReader.close()
+                } catch (e: Exception) {
+                    Log.w("CameraDebug", "Error cerrando ImageReader: ${e.message}")
+                }
+                isTakingPhoto.set(false)
+            }
 
             imageReader.setOnImageAvailableListener({ reader ->
+                // Imágenes que llegan cuando la foto ya terminó (lector cerrado).
+                if (photoFinished.get()) return@setOnImageAvailableListener
                 try {
                     val image = reader.acquireLatestImage()
                     if (image == null) {
                         Log.e("CameraError", "ImageReader returned null image")
                         updateTakePhotoField(deviceDocRef, false)
-                        return@setOnImageAvailableListener
-                    }
-
-                    if (pendingFramesToSkip.getAndDecrement() > 0) {
-                        Log.d("CameraDebug", "Warm-up frame descartado; esperando captura final")
-                        image.close()
+                        finishPhoto()
                         return@setOnImageAvailableListener
                     }
 
@@ -1477,7 +1554,7 @@ class BackgroundService : Service() {
                         outputFile.writeBytes(bytes)
                         Log.w("CameraDebug", "Fallback a JPEG crudo por decode nulo, size=${outputFile.length()} bytes")
                         uploadPhotoToStorage(outputFile, deviceDocRef)
-                        reader.close()
+                        finishPhoto()
                         updateTakePhotoField(deviceDocRef, false)
                         return@setOnImageAvailableListener
                     }
@@ -1491,7 +1568,7 @@ class BackgroundService : Service() {
                         outputFile.writeBytes(bytes)
                         Log.d("CameraDebug", "✅ Usando JPEG crudo (sin recomprimir), size=${outputFile.length()} bytes")
                         uploadPhotoToStorage(outputFile, deviceDocRef)
-                        reader.close()
+                        finishPhoto()
                         return@setOnImageAvailableListener
                     } else if (luma < 20f) {
                         bitmap = enhanceVeryLowLightBitmap(bitmap, luma)
@@ -1507,26 +1584,50 @@ class BackgroundService : Service() {
                     Log.d("CameraDebug", "📦 Compressed image file size: ${outputFile.length()} bytes")
 
                     uploadPhotoToStorage(outputFile, deviceDocRef)
-                    reader.close()
+                    finishPhoto()
                 } catch (e: Exception) {
                     Log.e("CameraError", "Error processing captured image: ${e.message}")
                     updateTakePhotoField(deviceDocRef, false)
-                    reader.close()
+                    finishPhoto()
                 }
             }, handler)
 
             if (ActivityCompat.checkSelfPermission(this, Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED) {
                 Log.e("CameraError", "Camera permission not granted at capture time")
                 updateTakePhotoField(deviceDocRef, false)
-                imageReader.close()
+                finishPhoto()
                 return
             }
+
+            // Si la cámara no llega a entregar la foto, se libera igualmente.
+            photoTimeout = Runnable {
+                Log.e("CameraError", "Timeout esperando la foto remota")
+                updateTakePhotoField(deviceDocRef, false)
+                finishPhoto()
+            }.also { handler.postDelayed(it, PHOTO_CAPTURE_TIMEOUT_MS) }
 
             val cameraCallbackExecutor = ContextCompat.getMainExecutor(this)
             cameraManager.openCamera(cameraId, object : CameraDevice.StateCallback() {
                 override fun onOpened(camera: CameraDevice) {
+                    if (photoFinished.get()) {
+                        camera.close()
+                        return
+                    }
+                    openedCamera.set(camera)
+                    try {
+                        configureAndCapture(camera)
+                    } catch (e: Exception) {
+                        // CameraAccessException o IllegalStateException si la cámara se
+                        // cerró mientras tanto (otra app u otra captura la reclamó).
+                        Log.e("CameraError", "Error preparando la captura: ${e.message}")
+                        updateTakePhotoField(deviceDocRef, false)
+                        finishPhoto()
+                    }
+                }
+
+                private fun configureAndCapture(camera: CameraDevice) {
                     val warmupRequest = camera.createCaptureRequest(CameraDevice.TEMPLATE_STILL_CAPTURE)
-                    warmupRequest.addTarget(imageReader.surface)
+                    warmupRequest.addTarget(warmupReader.surface)
 
                     val captureRequest = camera.createCaptureRequest(CameraDevice.TEMPLATE_STILL_CAPTURE)
                     captureRequest.addTarget(imageReader.surface)
@@ -1553,53 +1654,49 @@ class BackgroundService : Service() {
                     warmupRequest.set(CaptureRequest.CONTROL_AE_MODE, CaptureRequest.CONTROL_AE_MODE_ON)
                     captureRequest.set(CaptureRequest.CONTROL_AE_MODE, CaptureRequest.CONTROL_AE_MODE_ON)
 
-                    val aeRange = characteristics.get(
-                        CameraCharacteristics.CONTROL_AE_COMPENSATION_RANGE
-                    )
-                    if (aeRange != null && aeRange.upper >= 1) {
-                        val compensation = minOf(8, aeRange.upper)
-                        requestBuilders.forEach { request ->
-                            request.set(
-                                CaptureRequest.CONTROL_AE_EXPOSURE_COMPENSATION,
-                                compensation
-                            )
-                        }
-                    }
-
                     // 📷 Asegurar que la foto se guarde en vertical
                     val jpegOrientation = getJpegOrientation(deviceRotation, sensorOrientation)
                     requestBuilders.forEach { request ->
                         request.set(CaptureRequest.JPEG_ORIENTATION, jpegOrientation)
                     }
 
-                    val outputConfigurations = listOf(OutputConfiguration(imageReader.surface))
+                    val outputConfigurations = listOf(
+                        OutputConfiguration(imageReader.surface),
+                        OutputConfiguration(warmupReader.surface)
+                    )
                     val sessionConfiguration = SessionConfiguration(
                         SessionConfiguration.SESSION_REGULAR,
                         outputConfigurations,
                         cameraCallbackExecutor,
                         object : CameraCaptureSession.StateCallback() {
                             override fun onConfigured(session: CameraCaptureSession) {
+                                if (photoFinished.get()) return
+                                // IllegalStateException: la sesión ya se cerró (antes tumbaba la app).
                                 try {
                                     session.setRepeatingRequest(warmupRequest.build(), null, handler)
                                     handler.postDelayed({
+                                        if (photoFinished.get()) return@postDelayed
                                         try {
                                             session.stopRepeating()
                                             session.abortCaptures()
                                             session.capture(captureRequest.build(), null, handler)
-                                        } catch (e: CameraAccessException) {
+                                        } catch (e: Exception) {
                                             Log.e("CameraError", "Error during final capture: ${e.message}")
                                             updateTakePhotoField(deviceDocRef, false)
+                                            finishPhoto()
                                         }
                                     }, 1200)
-                                } catch (e: CameraAccessException) {
+                                } catch (e: Exception) {
                                     Log.e("CameraError", "Error during capture: ${e.message}")
                                     updateTakePhotoField(deviceDocRef, false)
+                                    finishPhoto()
                                 }
                             }
 
                             override fun onConfigureFailed(session: CameraCaptureSession) {
                                 Log.e("CameraError", "Failed to configure camera session.")
                                 updateTakePhotoField(deviceDocRef, false)
+                                finishPhoto()
                             }
                         }
                     )
@@ -1608,19 +1705,23 @@ class BackgroundService : Service() {
                 }
 
                 override fun onDisconnected(camera: CameraDevice) {
+                    Log.w("CameraError", "Cámara desconectada durante la foto remota")
                     camera.close()
                     updateTakePhotoField(deviceDocRef, false)
+                    finishPhoto()
                 }
 
                 override fun onError(camera: CameraDevice, error: Int) {
                     Log.e("CameraError", "Camera error: $error")
                     camera.close()
                     updateTakePhotoField(deviceDocRef, false)
+                    finishPhoto()
                 }
             }, handler)
         } catch (e: Exception) {
             Log.e("BackgroundService", "Failed to take photo", e)
             updateTakePhotoField(deviceDocRef, false)
+            isTakingPhoto.set(false)
         }
     }
 
@@ -1694,6 +1795,15 @@ class BackgroundService : Service() {
         orientations.append(Surface.ROTATION_270, 180)
 
         return (orientations.get(deviceRotation) + sensorOrientation + 270) % 360
+    }
+
+    /** Tamaño pequeño para los fotogramas de calentamiento (solo sirven para ajustar AE/AWB). */
+    private fun chooseWarmupSize(sizes: Array<Size>?): Size {
+        if (sizes.isNullOrEmpty()) return Size(640, 480)
+        return sizes
+            .filter { it.width * it.height >= 320 * 240 }
+            .minByOrNull { it.width * it.height }
+            ?: sizes.minBy { it.width * it.height }
     }
 
     private fun chooseStableJpegSize(sizes: Array<Size>?): Size? {
@@ -2429,6 +2539,7 @@ class BackgroundService : Service() {
     }
     override fun onDestroy() {
         Log.d("BackgroundService", "Service onDestroy called")
+        ProcessLifecycleOwner.get().lifecycle.removeObserver(appVisibilityObserver)
         BootDiagnostics.markServiceStopped(this, "onDestroy")
         serviceStatePrefs.edit {
             putBoolean("service_running", false)
