@@ -1,5 +1,5 @@
 <resources>
-    <string name="app_name">WithU Familiar</string>
+    <string name="app_name">WithU Child</string>
     <string name="slogan">I\'m with you, I won\'t leave you</string>
     <string name="alert_message">🚨 Alert activated from device %1$s</string>
     <string name="motion_alert_title">Security alert</string>
@@ -15,9 +15,9 @@
     <string name="password_empty_error">Password cannot be empty</string>
     <string name="password_cancelled">Authentication cancelled</string>
     <string name="welcome_title">Welcome</string>
-    <string name="service_name">WithU Familiar</string>
+    <string name="service_name">WithU Child</string>
     <string name="service_status">Parental safety monitoring is active on this device</string>
-    <string name="service_channel_name">WithU Familiar</string>
+    <string name="service_channel_name">WithU Child</string>
     <string name="button_close">Close</string>
     <string name="scan_qr_title">Scan QR Code</string>
     <string name="scan_qr_subtitle">Position the QR code inside the frame</string>
@@ -33,15 +33,15 @@
     <string name="privacy_policy">Privacy Policy</string>
     <string name="privacy_policy_url">https://withu-nextou.web.app/legal/politica-de-privacidad.html</string>
     <string name="disclosure_monitoring_title">Parental monitoring permissions</string>
-    <string name="disclosure_monitoring_message">WithU Familiar is a parental control app. With the parent or legal guardian\'s authorization, it collects location data in the background, even when the app is closed or not in use, to show the child device location. It can also use the microphone to detect an emergency keyword, use motion sensors to detect possible falls or forced phone snatches, use the camera to capture photos requested by the guardian, show a persistent service notification, and collect app usage data when Usage Access is enabled. This information is stored in the family account in Firebase and is used only for parental safety features.</string>
+    <string name="disclosure_monitoring_message">WithU Child is a parental control app. With the parent or legal guardian\'s authorization, it collects location data in the background, even when the app is closed or not in use, to show the child device location. It can also use the microphone to detect an emergency keyword, use motion sensors to detect possible falls or forced phone snatches, use the camera to capture photos requested by the guardian, show a persistent service notification, and collect app usage data when Usage Access is enabled. This information is stored in the family account in Firebase and is used only for parental safety features.</string>
     <string name="disclosure_qr_camera_title">Camera use for setup</string>
-    <string name="disclosure_qr_camera_message">WithU Familiar uses the camera now only to scan the QR code that links this device to the parent account. The QR scan reads the account email and device ID. No photo or video from this setup scan is saved.</string>
+    <string name="disclosure_qr_camera_message">WithU Child uses the camera now only to scan the QR code that links this device to the parent account. The QR scan reads the account email and device ID. No photo or video from this setup scan is saved.</string>
     <string name="disclosure_usage_title">App usage access</string>
-    <string name="disclosure_usage_message">WithU Familiar can collect which apps are used on this device and the approximate time each app stays in the foreground. This parental control feature helps the parent or legal guardian review app activity. Android will open Usage Access settings so you can allow or deny this access.</string>
+    <string name="disclosure_usage_message">WithU Child can collect which apps are used on this device and the approximate time each app stays in the foreground. This parental control feature helps the parent or legal guardian review app activity. Android will open Usage Access settings so you can allow or deny this access.</string>
     <string name="background_execution_title">Allow background operation</string>
-    <string name="background_execution_message">For parental safety features to keep working when the app is closed, allow background operation for WithU Familiar.\n\n1. Open Battery or Battery usage.\n2. Select WithU Familiar.\n3. Choose Unrestricted or Allow in background.\n4. Disable battery optimization for this app.\n5. Return to the app.</string>
+    <string name="background_execution_message">For parental safety features to keep working when the app is closed, allow background operation for WithU Child.\n\n1. Open Battery or Battery usage.\n2. Select WithU Child.\n3. Choose Unrestricted or Allow in background.\n4. Disable battery optimization for this app.\n5. Return to the app.</string>
     <string name="guidance_title">Required permission</string>
-    <string name="guidance_subtitle">WithU Familiar needs background location so the parent or legal guardian can see the child device location even when the app is closed or not in use.</string>
+    <string name="guidance_subtitle">WithU Child needs background location so the parent or legal guardian can see the child device location even when the app is closed or not in use.</string>
     <string name="guidance_steps_label">Follow these steps</string>
     <string name="guidance_step_1">1. On the next screen, open Permissions and set Location to “Allow all the time”.</string>
     <string name="guidance_step_2">2. Return to the app. For security, you may need to scan the QR code and enter the parent password again.</string>
