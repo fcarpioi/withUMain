@@ -370,7 +370,16 @@ class BackgroundService : Service() {
 
         val notification = createNotification()
         try {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q && currentForegroundTypes != 0) {
+                // Ya está en primer plano. Un nuevo arranque desde segundo plano
+                // (p. ej. el trabajo de recuperación de BootReceiver) solo pediría
+                // ubicación y le quitaría cámara y micrófono; aquí solo se amplía.
+                Log.d(
+                    "BackgroundService",
+                    "Already in foreground with types $currentForegroundTypes ($startReason); not downgrading"
+                )
+                promoteForegroundServiceTypes()
+            } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
                 val foregroundTypes = resolveForegroundServiceTypes(startReason)
                 startForeground(NOTIFICATION_ID, notification, foregroundTypes)
                 currentForegroundTypes = foregroundTypes
