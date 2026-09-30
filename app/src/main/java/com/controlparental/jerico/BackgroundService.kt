@@ -57,6 +57,8 @@ import com.google.firebase.storage.FirebaseStorage
 import com.google.firebase.storage.StorageMetadata
 import java.io.File
 import java.io.FileOutputStream
+import java.util.Calendar
+import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 import android.os.HandlerThread
@@ -738,6 +740,13 @@ class BackgroundService : Service() {
             Log.d("Permissions", "✅ Permiso USAGE_STATS ya otorgado.")
         }
     }
+    // Máximo de días hacia atrás que Android conserva con detalle diario.
+    private val usageHistoryDays = 7
+    // Se conservan en Firestore los últimos 30 días.
+    private val usageRetentionDays = 30
+    // Una app cuenta si estuvo al menos 1 minuto en primer plano ese día.
+    private val usageMinForegroundMillis = 60_000L
+
     private fun handleTrackApps(deviceDocRef: DocumentReference) {
         val deviceContext = getCurrentDeviceContext() ?: return
         if (!hasUsageStatsPermission(this)) {
@@ -754,80 +763,80 @@ class BackgroundService : Service() {
             return
         }
 
-        val usageStatsManager = getSystemService(Context.USAGE_STATS_SERVICE) as UsageStatsManager
-        val endTime = System.currentTimeMillis()
-        val startTime = endTime - TimeUnit.DAYS.toMillis(1) // Últimas 24 horas
-
-        val stats = try {
-            usageStatsManager.queryUsageStats(
-                UsageStatsManager.INTERVAL_DAILY,
-                startTime,
-                endTime
-            )
-        } catch (e: Exception) {
-            updateTrackAppsStatus(
-                deviceDocRef = deviceDocRef,
-                status = "query_error",
-                savedCount = 0,
-                extraUpdates = mapOf("trackAppsLastError" to (e.message ?: e.javaClass.simpleName))
-            )
-            Log.e("TrackApps", "Error consultando UsageStats", e)
-            return
-        }
-
-        if (stats.isEmpty()) {
-            Log.w("TrackApps", "No se encontraron estadísticas de uso")
-            updateTrackAppsStatus(
-                deviceDocRef = deviceDocRef,
-                status = "no_usage_stats",
-                savedCount = 0,
-                extraUpdates = mapOf("trackAppsLastError" to "UsageStatsManager returned no stats")
-            )
-            return
-        }
-
-        val usageRootRef = getUsageRootRef(deviceContext)
+        val usageStatsManager =
+            getSystemService(Context.USAGE_STATS_SERVICE) as UsageStatsManager
         val pm = packageManager
-        val minForegroundMillis = 5 * 60 * 1000L
-        val allowedUsage = stats.mapNotNull { usage ->
-            try {
-                if (usage.totalTimeInForeground < minForegroundMillis) return@mapNotNull null
-                if (!isTrackAppsPackageAllowed(pm, usage.packageName)) return@mapNotNull null
-                usage
-            } catch (e: PackageManager.NameNotFoundException) {
-                Log.e("TrackApps", "App no encontrada: ${usage.packageName}")
-                null
-            }
-        }
-
-        if (allowedUsage.isEmpty()) {
-            updateTrackAppsStatus(
-                deviceDocRef = deviceDocRef,
-                status = "no_matching_apps",
-                savedCount = 0,
-                extraUpdates = mapOf("trackAppsLastError" to "No non-system app exceeded the 5 minute threshold")
-            )
-            return
-        }
+        val usageRootRef = getUsageRootRef(deviceContext)
+        val dayFormat = SimpleDateFormat("yyyy-MM-dd", Locale.US)
+        val now = System.currentTimeMillis()
+        val dayMillis = TimeUnit.DAYS.toMillis(1)
 
         val batch = firestore.batch()
-        allowedUsage.forEach { usage ->
-            val packageId = resolvePackageId(usage.packageName)
-            batch.set(usageRootRef.document(packageId), buildUsageData(usage), SetOptions.merge())
+        var savedDays = 0
+        var savedApps = 0
+
+        // Un documento por día: usage/yyyy-MM-dd con la lista de apps de ese día.
+        for (offset in 0 until usageHistoryDays) {
+            val cal = Calendar.getInstance()
+            cal.add(Calendar.DAY_OF_YEAR, -offset)
+            cal.set(Calendar.HOUR_OF_DAY, 0)
+            cal.set(Calendar.MINUTE, 0)
+            cal.set(Calendar.SECOND, 0)
+            cal.set(Calendar.MILLISECOND, 0)
+            val dayStart = cal.timeInMillis
+            val dayEnd = minOf(dayStart + dayMillis, now)
+            if (dayEnd <= dayStart) continue
+            val dateId = dayFormat.format(Date(dayStart))
+
+            val aggregated = try {
+                usageStatsManager.queryAndAggregateUsageStats(dayStart, dayEnd)
+            } catch (e: Exception) {
+                Log.e("TrackApps", "Error consultando uso del día $dateId", e)
+                emptyMap()
+            }
+
+            val apps = aggregated.values.mapNotNull { usage ->
+                if (usage.totalTimeInForeground < usageMinForegroundMillis) return@mapNotNull null
+                // Solo apps con icono en el menú (incluye navegador, WhatsApp, etc.,
+                // aunque vengan preinstalados; excluye servicios del sistema).
+                if (!isUserVisibleApp(pm, usage.packageName)) return@mapNotNull null
+                mapOf(
+                    "packageName" to usage.packageName,
+                    "appName" to appLabelFor(pm, usage.packageName),
+                    "totalTimeInForeground" to usage.totalTimeInForeground,
+                    "lastTimeUsed" to usage.lastTimeUsed
+                )
+            }.sortedByDescending { it["totalTimeInForeground"] as Long }
+
+            if (apps.isEmpty()) continue
+
+            batch.set(
+                usageRootRef.document(dateId),
+                mapOf(
+                    "date" to dateId,
+                    "capturedAt" to FieldValue.serverTimestamp(),
+                    "apps" to apps
+                )
+            )
+            savedDays++
+            savedApps += apps.size
         }
+
         batch.update(
             deviceDocRef,
             mapOf(
                 "trackApps" to false,
                 "trackAppsLastRunAt" to FieldValue.serverTimestamp(),
-                "trackAppsLastStatus" to "success",
-                "trackAppsLastSavedCount" to allowedUsage.size,
-                "trackAppsLastError" to null
+                "trackAppsLastStatus" to if (savedDays > 0) "success" else "no_matching_apps",
+                "trackAppsLastSavedCount" to savedApps,
+                "trackAppsLastError" to if (savedDays > 0) null
+                    else "No user-visible app exceeded the 1 minute threshold"
             )
         )
         batch.commit()
             .addOnSuccessListener {
-                Log.d("TrackApps", "Uso de apps guardado. count=${allowedUsage.size}")
+                Log.d("TrackApps", "Uso guardado. días=$savedDays apps=$savedApps")
+                pruneOldUsage(usageRootRef, dayFormat)
             }
             .addOnFailureListener { e ->
                 Log.e("TrackApps", "Error guardando uso de apps: ${e.message}")
@@ -838,6 +847,42 @@ class BackgroundService : Service() {
                     extraUpdates = mapOf("trackAppsLastError" to (e.message ?: e.javaClass.simpleName))
                 )
             }
+    }
+
+    /// Borra los documentos de uso de más de [usageRetentionDays] días y los
+    /// del formato antiguo (uno por app, sin fecha).
+    private fun pruneOldUsage(
+        usageRootRef: com.google.firebase.firestore.CollectionReference,
+        dayFormat: SimpleDateFormat
+    ) {
+        val cal = Calendar.getInstance()
+        cal.add(Calendar.DAY_OF_YEAR, -usageRetentionDays)
+        cal.set(Calendar.HOUR_OF_DAY, 0)
+        cal.set(Calendar.MINUTE, 0)
+        cal.set(Calendar.SECOND, 0)
+        cal.set(Calendar.MILLISECOND, 0)
+        val cutoffId = dayFormat.format(cal.time)
+        val dateRegex = Regex("""\d{4}-\d{2}-\d{2}""")
+
+        usageRootRef.get().addOnSuccessListener { snapshot ->
+            val batch = firestore.batch()
+            var toDelete = 0
+            for (doc in snapshot.documents) {
+                val id = doc.id
+                // Comparar yyyy-MM-dd como texto equivale a comparar por fecha.
+                if (!dateRegex.matches(id) || id < cutoffId) {
+                    batch.delete(doc.reference)
+                    toDelete++
+                }
+            }
+            if (toDelete > 0) {
+                batch.commit()
+                    .addOnSuccessListener { Log.d("TrackApps", "Uso antiguo borrado: $toDelete docs") }
+                    .addOnFailureListener { e -> Log.e("TrackApps", "Error al limpiar uso: ${e.message}") }
+            }
+        }.addOnFailureListener { e ->
+            Log.e("TrackApps", "No se pudo listar uso para limpiar: ${e.message}")
+        }
     }
 
     private fun updateTrackAppsStatus(
@@ -2467,38 +2512,19 @@ class BackgroundService : Service() {
             }
     }
 
-    private fun resolvePackageId(packageName: String): String {
-        val segments = packageName.split(".")
-        return if (segments.size >= 3) segments[2] else packageName
-    }
+    private fun isUserVisibleApp(pm: PackageManager, packageName: String): Boolean =
+        try {
+            pm.getLaunchIntentForPackage(packageName) != null
+        } catch (e: Exception) {
+            false
+        }
 
-    private fun buildUsageData(usage: UsageStats): Map<String, Any> {
-        return hashMapOf(
-            "packageName" to usage.packageName,
-            "totalTimeInForeground" to usage.totalTimeInForeground,
-            "lastTimeUsed" to usage.lastTimeUsed,
-            "firstTimeStamp" to usage.firstTimeStamp,
-            "lastTimeStamp" to usage.lastTimeStamp,
-            "timestampUpload" to Date()
-        )
-    }
-
-    private fun isSystemPackage(pm: PackageManager, packageName: String): Boolean {
-        val appInfo = pm.getApplicationInfo(packageName, 0)
-        return (appInfo.flags and android.content.pm.ApplicationInfo.FLAG_SYSTEM) != 0 ||
-            (appInfo.flags and android.content.pm.ApplicationInfo.FLAG_UPDATED_SYSTEM_APP) != 0
-    }
-
-    private fun isTrackAppsPackageAllowed(pm: PackageManager, packageName: String): Boolean {
-        if (!isSystemPackage(pm, packageName)) return true
-
-        val allowlistedApps = setOf(
-            "com.google.android.youtube",
-            "com.instagram.android",
-            "com.facebook.katana"
-        )
-        return allowlistedApps.contains(packageName)
-    }
+    private fun appLabelFor(pm: PackageManager, packageName: String): String =
+        try {
+            pm.getApplicationLabel(pm.getApplicationInfo(packageName, 0)).toString()
+        } catch (e: Exception) {
+            packageName.substringAfterLast('.')
+        }
 
     private fun verificarPermisoDeUso(context: Context, requestRemote: Boolean, deviceDocRef: DocumentReference) {
         val appOps = context.getSystemService(Context.APP_OPS_SERVICE) as AppOpsManager
