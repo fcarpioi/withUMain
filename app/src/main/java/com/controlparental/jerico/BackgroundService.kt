@@ -146,11 +146,20 @@ class BackgroundService : Service() {
     private var audioCheckHandler: Handler? = null
     private var audioCheckRunnable: Runnable? = null
     private var pendingSpeechRestart: Runnable? = null
-    private val keywordListenerEnabled = true
+    // Escucha por micrófono desactivada: consumía mucha batería y no era
+    // fiable. La emergencia se dispara con el botón de encendido x5 o el botón
+    // SOS de la notificación.
+    private val keywordListenerEnabled = false
     private val recordingAudioSource = MediaRecorder.AudioSource.MIC
     private var lastSpeechStartAtMs: Long = 0L
     private var currentSpeechRestartDelayMs: Long = 15_000L
     private var lastKeywordAlarmAtMs: Long = 0L
+    // Gesto de emergencia: 5 pulsaciones del botón de encendido en 3 s.
+    private val powerPressTimestamps = ArrayDeque<Long>()
+    private val sosPowerPressCount = 5
+    private val sosPowerPressWindowMs = 3_000L
+    private var lastSosAtMs = 0L
+    private val sosCooldownMs = 10_000L
     private val minSpeechStartIntervalMs: Long = 12_000L
     private val maxSpeechRestartDelayMs: Long = 60_000L
     private val keywordAlarmCooldownMs: Long = 90_000L
@@ -353,6 +362,7 @@ class BackgroundService : Service() {
         // Lecturas con peor precisión no cuentan como movimiento.
         private const val MAX_LOCATION_ACCURACY_METERS = 100f
         const val ACTION_TRIGGER_ALARM = "com.controlparental.jerico.ACTION_TRIGGER_ALARM"
+        const val ACTION_SOS = "com.controlparental.jerico.ACTION_SOS"
         const val EXTRA_START_REASON = "com.controlparental.jerico.extra.START_REASON"
         const val START_REASON_BOOT = "boot"
         const val START_REASON_WORKER = "worker"
@@ -401,6 +411,9 @@ class BackgroundService : Service() {
         // Verifica si se envió la acción para activar la alarma
         if (intent?.action == ACTION_TRIGGER_ALARM) {
             triggerAlarm()
+        }
+        if (intent?.action == ACTION_SOS) {
+            triggerSosAlert()
         }
 
         startServiceRuntimeMonitoring()
@@ -542,11 +555,19 @@ class BackgroundService : Service() {
             this, 0, notificationIntent, PendingIntent.FLAG_IMMUTABLE
         )
 
+        val sosIntent = Intent(this, BackgroundService::class.java).apply {
+            action = ACTION_SOS
+        }
+        val sosPendingIntent = PendingIntent.getService(
+            this, 1, sosIntent, PendingIntent.FLAG_IMMUTABLE
+        )
+
         return NotificationCompat.Builder(this, channelId)
             .setContentTitle(getString(R.string.service_name))
             .setContentText(getString(R.string.service_status))
             .setSmallIcon(R.drawable.logo)  // Usar el logo de WithU
             .setContentIntent(pendingIntent)
+            .addAction(R.drawable.logo, "SOS", sosPendingIntent)
             .build()
     }
 
@@ -2016,6 +2037,7 @@ class BackgroundService : Service() {
         override fun onReceive(context: Context, intent: Intent) {
             when (intent.action) {
                 Intent.ACTION_SCREEN_OFF -> {
+                    registerPowerPressForSos()
                     Log.d("ScreenStateReceiver", "Pantalla apagada: verificando estado de audio")
                     logRecognizerState("screen_off_event")
 
@@ -2027,6 +2049,7 @@ class BackgroundService : Service() {
                     }
                 }
                 Intent.ACTION_SCREEN_ON -> {
+                    registerPowerPressForSos()
                     Log.d("ScreenStateReceiver", "Pantalla encendida: deteniendo SpeechRecognizer")
                     cancelPendingSpeechRecognizerRestart()
                     // Detener y liberar el SpeechRecognizer para liberar el micrófono
@@ -2304,6 +2327,37 @@ class BackgroundService : Service() {
         } catch (e: Exception) {
             Log.w("SpeechRecognizer", "No se pudo ajustar tono del sistema: ${e.message}")
         }
+    }
+
+    /// Cuenta cada pulsación del botón de encendido (cada una enciende o apaga
+    /// la pantalla). 5 en 3 segundos disparan el SOS, aunque el móvil esté
+    /// bloqueado. No consume batería: es un evento puntual.
+    private fun registerPowerPressForSos() {
+        val now = System.currentTimeMillis()
+        powerPressTimestamps.addLast(now)
+        while (powerPressTimestamps.isNotEmpty() &&
+            now - powerPressTimestamps.first() > sosPowerPressWindowMs) {
+            powerPressTimestamps.removeFirst()
+        }
+        if (powerPressTimestamps.size >= sosPowerPressCount) {
+            powerPressTimestamps.clear()
+            Log.d("SOS", "Gesto de emergencia detectado (botón de encendido x5)")
+            triggerSosAlert()
+        }
+    }
+
+    /// Aviso de emergencia iniciado por el niño (gesto o botón de la
+    /// notificación). Silencioso en el móvil del hijo y activa el rastreo para
+    /// que el padre pueda localizarlo.
+    private fun triggerSosAlert() {
+        val now = System.currentTimeMillis()
+        if (now - lastSosAtMs < sosCooldownMs) {
+            Log.d("SOS", "SOS en cooldown; se omite")
+            return
+        }
+        lastSosAtMs = now
+        Log.d("SOS", "Enviando aviso de emergencia al tutor")
+        triggerAlarm(playLocalSound = false, activateTrackingRecording = true)
     }
 
     @SuppressLint("StringFormatInvalid")
